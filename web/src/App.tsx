@@ -1,17 +1,62 @@
-import { useEffect, useState } from 'react';
-import { api } from './api.ts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, errorMessage, isAbortError } from './api.ts';
+import type {
+  ConfigReport,
+  HealthResponse,
+  MatrixResponse,
+  PromptsReport,
+  PromptState,
+  SettingsReport,
+} from '../../shared/types.ts';
 import { PromptsView } from './views/PromptsView.tsx';
+import type { PromptsHandle } from './views/PromptsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
+import type { SettingsHandle } from './views/SettingsView.tsx';
 import { SkillsView } from './views/SkillsView.tsx';
 import { SnapshotsPanel } from './views/SnapshotsPanel.tsx';
+import { THEME_OPTIONS, applyTheme, loadTheme, rememberTheme } from './lib/theme.ts';
+import type { ThemeMode } from './lib/theme.ts';
 
 const TABS = [
-  { key: 'skills', label: 'skills' },
-  { key: 'prompts', label: '提示词' },
-  { key: 'settings', label: 'settings / MCP' },
+  {
+    key: 'skills',
+    label: 'skills',
+    title: 'skills 总览',
+    lede: '源目录与三个 agent 的链接、副本分布；可就地建链、导入、移除或清理坏链。',
+  },
+  {
+    key: 'prompts',
+    label: '提示词',
+    title: '全局提示词',
+    lede: '维护所有 agent 共享的单一源正文，并对齐各自的提示词文件。',
+  },
+  {
+    key: 'settings',
+    label: '设置',
+    title: '设置',
+    lede: '按官方 schema 编辑 Claude Code、Codex 与 pi 的用户级配置和 MCP server。',
+  },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
+
+const PROMPT_STATE_SHORT: Record<PromptState, string> = {
+  'no-source': '提示词源未建立',
+  missing: '提示词缺失',
+  synced: '提示词已同步',
+  drift: '提示词待对齐',
+  broken: '提示词链接失效',
+  'external-link': '提示词指向别处',
+};
+
+interface AgentStatus {
+  key: string;
+  label: string;
+  detected: boolean;
+  fileCount: number | null;
+  existsCount: number;
+  promptState: PromptState | null;
+}
 
 function tabFromHash(): TabKey {
   const hash = window.location.hash.replace('#', '');
@@ -21,64 +66,337 @@ function tabFromHash(): TabKey {
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>(tabFromHash);
-  const [version, setVersion] = useState(0);
-  const [summary, setSummary] = useState<{ prompts: string; mcp: number } | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
+  const [theme, setTheme] = useState<ThemeMode>(() => loadTheme());
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [promptsReport, setPromptsReport] = useState<PromptsReport | null>(null);
+  const [matrixReport, setMatrixReport] = useState<MatrixResponse | null>(null);
+  const [settingsReport, setSettingsReport] = useState<SettingsReport | null>(null);
+  const [configReport, setConfigReport] = useState<ConfigReport | null>(null);
+  const [metaErrors, setMetaErrors] = useState<string[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [quitting, setQuitting] = useState(false);
+
+  const promptsDirty = useRef(false);
+  const settingsDirty = useRef(false);
+  const promptsHandle = useRef<PromptsHandle | null>(null);
+  const settingsHandle = useRef<SettingsHandle | null>(null);
+  const metaSeq = useRef(0);
 
   useEffect(() => {
-    const onHashChange = () => setTab(tabFromHash());
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    applyTheme(theme);
+  }, [theme]);
+
+  const loadMeta = useCallback(async (signal?: AbortSignal) => {
+    const seq = ++metaSeq.current;
+    const results = await Promise.allSettled([
+      api.health(signal),
+      api.prompts(signal),
+      api.matrix(signal),
+      api.settings(signal),
+      api.config(signal),
+    ]);
+    if (seq !== metaSeq.current || signal?.aborted) return;
+
+    const errors: string[] = [];
+    const [healthResult, promptsResult, matrixResult, settingsResult, configResult] = results;
+    if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
+    else if (!isAbortError(healthResult.reason)) errors.push(`版本信息：${errorMessage(healthResult.reason)}`);
+
+    if (promptsResult.status === 'fulfilled') setPromptsReport(promptsResult.value);
+    else if (!isAbortError(promptsResult.reason)) errors.push(`提示词摘要：${errorMessage(promptsResult.reason)}`);
+
+    if (matrixResult.status === 'fulfilled') setMatrixReport(matrixResult.value);
+    else if (!isAbortError(matrixResult.reason)) errors.push(`skills 摘要：${errorMessage(matrixResult.reason)}`);
+
+    if (settingsResult.status === 'fulfilled') setSettingsReport(settingsResult.value);
+    else if (!isAbortError(settingsResult.reason)) errors.push(`设置摘要：${errorMessage(settingsResult.reason)}`);
+
+    if (configResult.status === 'fulfilled') setConfigReport(configResult.value);
+    else if (!isAbortError(configResult.reason)) errors.push(`MCP 摘要：${errorMessage(configResult.reason)}`);
+
+    setMetaErrors(errors);
   }, []);
 
   useEffect(() => {
-    Promise.all([api.prompts(), api.config()])
-      .then(([prompts, config]) => {
-        const synced = prompts.targets.filter((target) => target.state === 'synced').length;
-        setSummary({
-          prompts: prompts.source.exists ? `${synced}/${prompts.targets.length} 同步` : '源未建立',
-          mcp: config.servers.length,
-        });
-      })
-      .catch(() => setSummary(null));
-  }, [version]);
+    const controller = new AbortController();
+    void loadMeta(controller.signal);
+    return () => controller.abort();
+  }, [dataVersion, loadMeta]);
 
-  const select = (key: TabKey) => {
-    setTab(key);
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = tabFromHash();
+      if (next === tab) return;
+      const dirty: string[] = [];
+      if (tab === 'prompts' && promptsDirty.current) dirty.push('提示词');
+      if (tab === 'settings' && settingsDirty.current) dirty.push('设置');
+      if (dirty.length > 0) {
+        const discard = window.confirm(
+          `${dirty.join('、')}有未保存的修改。切换页面会放弃这些修改，继续吗？`,
+        );
+        if (!discard) {
+          window.location.hash = tab;
+          return;
+        }
+      }
+      setTab(next);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [tab]);
+
+  const agents = useMemo<AgentStatus[]>(() => {
+    const keys = new Set(['claude', 'codex', 'pi']);
+    for (const agent of settingsReport?.agents ?? []) keys.add(agent.key);
+    for (const agent of matrixReport?.agents ?? []) keys.add(agent.key);
+    for (const target of promptsReport?.targets ?? []) keys.add(target.key);
+
+    const labels = new Map<string, string>();
+    for (const agent of settingsReport?.agents ?? []) labels.set(agent.key, agent.label);
+    for (const agent of matrixReport?.agents ?? []) labels.set(agent.key, agent.label);
+    for (const target of promptsReport?.targets ?? []) labels.set(target.key, target.label);
+
+    const detected = new Map(
+      (matrixReport?.agents ?? []).map((agent) => [agent.key, agent.detected]),
+    );
+    const settingsFiles = new Map(
+      (settingsReport?.agents ?? []).map((agent) => [agent.key, agent.files]),
+    );
+
+    return [...keys].map((key) => {
+      const files = settingsFiles.get(key);
+      const prompt = promptsReport?.targets.find((target) => target.key === key) ?? null;
+      return {
+        key,
+        label: labels.get(key) ?? key,
+        detected: detected.get(key) ?? (files?.some((file) => file.exists) ?? false),
+        fileCount: files === undefined ? null : files.length,
+        existsCount: files?.filter((file) => file.exists).length ?? 0,
+        promptState: prompt?.state ?? null,
+      };
+    });
+  }, [settingsReport, matrixReport, promptsReport]);
+
+  const promptSummary = promptsReport
+    ? promptsReport.source.exists
+      ? `${promptsReport.targets.filter((target) => target.state === 'synced').length}/${promptsReport.targets.length} 同步`
+      : '源未建立'
+    : '读取中…';
+
+  const mcpSummary = configReport ? `${configReport.servers.length} 个 server` : '读取中…';
+
+  function anyDirty(): boolean {
+    return promptsDirty.current || settingsDirty.current;
+  }
+
+  function select(key: TabKey) {
+    if (key === tab) return;
     window.location.hash = key;
-  };
+  }
 
-  const changed = () => setVersion((current) => current + 1);
+  function rescan() {
+    if (anyDirty()) {
+      const discard = window.confirm(
+        '当前页面有未保存的修改。重新扫描会放弃这些修改并重新读取磁盘，继续吗？',
+      );
+      if (!discard) return;
+      promptsHandle.current?.discardAndReload();
+      settingsHandle.current?.discardAll();
+    }
+    setNotice(null);
+    setDataVersion((current) => current + 1);
+    setSnapshotVersion((current) => current + 1);
+  }
+
+  const changed = useCallback(() => {
+    setDataVersion((current) => current + 1);
+    setSnapshotVersion((current) => current + 1);
+  }, []);
+
+  const restored = useCallback(() => {
+    setDataVersion((current) => current + 1);
+    setSnapshotVersion((current) => current + 1);
+  }, []);
+
+  const settingsSaved = useCallback(() => {
+    setSnapshotVersion((current) => current + 1);
+    void loadMeta();
+  }, [loadMeta]);
+
+  const markPromptsDirty = useCallback((dirty: boolean) => {
+    promptsDirty.current = dirty;
+  }, []);
+
+  const markSettingsDirty = useCallback((dirty: boolean) => {
+    settingsDirty.current = dirty;
+  }, []);
+
+  function chooseTheme(mode: ThemeMode) {
+    setTheme(mode);
+    rememberTheme(mode);
+  }
+
+  async function quit() {
+    if (anyDirty()) {
+      const discard = window.confirm(
+        '当前页面有未保存的修改。退出会丢失这些修改，仍然退出吗？',
+      );
+      if (!discard) return;
+    }
+    if (!window.confirm('退出 AgentManager？后台服务会一并停止。')) return;
+    setQuitting(true);
+    setNotice(null);
+    try {
+      await api.quit();
+      setNotice('AgentManager 已停止，可以关闭这个窗口了。');
+    } catch (reason) {
+      setNotice(`停止失败：${errorMessage(reason)}`);
+    } finally {
+      setQuitting(false);
+    }
+  }
+
+  const activeTab = TABS.find((entry) => entry.key === tab) ?? TABS[0];
 
   return (
-    <main>
-      <header className="page-head">
-        <div>
-          <h1>AgentManager</h1>
-          {summary && (
-            <p className="meta">
-              提示词 {summary.prompts} · MCP {summary.mcp} 个 server · 每次打开都重新扫描
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            AM
+          </span>
+          <span className="brand-copy">
+            <strong>AgentManager</strong>
+            <span>本地 agent 配置中枢</span>
+          </span>
+        </div>
+
+        <nav className="side-nav" aria-label="主导航">
+          <div className="nav-list" role="tablist" aria-orientation="vertical">
+            {TABS.map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                role="tab"
+                id={`nav-${entry.key}`}
+                aria-selected={entry.key === tab}
+                aria-controls="workspace-panel"
+                className={entry.key === tab ? 'side-link is-active' : 'side-link'}
+                onClick={() => select(entry.key)}
+              >
+                <span className="side-link-label">{entry.label}</span>
+                <span className="side-link-hint">{entry.title}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        <section className="side-agents" aria-labelledby="side-agents-title">
+          <h2 id="side-agents-title">agent 状态</h2>
+          <div className="side-summary">
+            <span>提示词 {promptSummary}</span>
+            <span>MCP {mcpSummary}</span>
+          </div>
+          <ul>
+            {agents.map((agent) => (
+              <li key={agent.key} className="side-agent">
+                <span
+                  className={`status-dot${agent.detected ? ' is-on' : ''}`}
+                  aria-hidden="true"
+                />
+                <span className="sr-only">{agent.detected ? '已检测' : '未检测'}</span>
+                <span className="side-agent-copy">
+                  <strong>{agent.label}</strong>
+                  <span>
+                    {agent.fileCount === null
+                      ? '配置文件未知'
+                      : `${agent.existsCount}/${agent.fileCount} 个文件`}
+                    {agent.promptState ? ` · ${PROMPT_STATE_SHORT[agent.promptState]}` : ''}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {metaErrors.length > 0 && (
+            <p className="side-error" title={metaErrors.join('；')}>
+              部分状态读取失败{' '}
+              <button type="button" className="link-button" onClick={() => void loadMeta()}>
+                重试
+              </button>
             </p>
           )}
-        </div>
-        <nav className="tabs">
-          {TABS.map((entry) => (
-            <button
-              key={entry.key}
-              type="button"
-              className={entry.key === tab ? 'tab active' : 'tab'}
-              onClick={() => select(entry.key)}
-            >
-              {entry.label}
+        </section>
+
+        <footer className="side-foot">
+          <div className="side-version">
+            <span>{health ? `v${health.version}` : '版本未知'}</span>
+            <code>{health?.url ?? '本机服务'}</code>
+          </div>
+          <button type="button" className="secondary" onClick={() => void quit()} disabled={quitting}>
+            {quitting ? '停止中…' : '退出程序'}
+          </button>
+        </footer>
+      </aside>
+
+      <div className="app-main">
+        <header className="page-head">
+          <div className="page-title">
+            <p className="eyebrow">AgentManager / {activeTab.label}</p>
+            <h1>{activeTab.title}</h1>
+            <p className="lede">{activeTab.lede}</p>
+          </div>
+          <div className="head-tools">
+            <div className="theme-switch" role="group" aria-label="主题">
+              {THEME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={theme === option.value}
+                  title={option.title}
+                  className={theme === option.value ? 'is-active' : ''}
+                  onClick={() => chooseTheme(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="primary rescan" onClick={rescan}>
+              重新扫描
             </button>
-          ))}
-        </nav>
-      </header>
+          </div>
+        </header>
 
-      {tab === 'skills' && <SkillsView version={version} onChanged={changed} />}
-      {tab === 'prompts' && <PromptsView version={version} onChanged={changed} />}
-      {tab === 'settings' && <SettingsView version={version} />}
+        <main
+          className="workspace"
+          id="workspace-panel"
+          role="tabpanel"
+          aria-labelledby={`nav-${activeTab.key}`}
+        >
+          {notice && <p className="notice">{notice}</p>}
 
-      <SnapshotsPanel version={version} onRestored={changed} />
-    </main>
+          {tab === 'skills' && <SkillsView version={dataVersion} onChanged={changed} />}
+          {tab === 'prompts' && (
+            <PromptsView
+              version={dataVersion}
+              onChanged={changed}
+              onDirtyChange={markPromptsDirty}
+              handleRef={promptsHandle}
+            />
+          )}
+          {tab === 'settings' && (
+            <SettingsView
+              version={dataVersion}
+              onDirtyChange={markSettingsDirty}
+              onSaved={settingsSaved}
+              handleRef={settingsHandle}
+            />
+          )}
+
+          <SnapshotsPanel version={snapshotVersion} onRestored={restored} />
+        </main>
+      </div>
+    </div>
   );
 }

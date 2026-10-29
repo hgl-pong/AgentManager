@@ -1,6 +1,17 @@
 // The API contract shared by the server and the browser. Keep it free of node: imports so the
 // client bundle never pulls in filesystem code.
 
+/** A request failure that carries the HTTP status the server must answer with. */
+export class AppError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AppError';
+    this.status = status;
+  }
+}
+
 export type CellState = 'linked' | 'broken' | 'external' | 'copy' | 'orphan' | 'missing';
 
 export interface Cell {
@@ -43,11 +54,13 @@ export interface ScanInput {
 export interface MatrixResponse extends Matrix {
   scannedAt: string;
   durationMs: number;
+  /** Set when a write succeeded but the follow-up scan failed; the matrix is then a usable stub. */
+  warning?: string;
 }
 
 // ---- skills write actions ----
 
-export type SkillActionKind = 'link' | 'import' | 'remove';
+export type SkillActionKind = 'link' | 'import' | 'remove' | 'unlink';
 
 export interface SkillActionRequest {
   agent: string;
@@ -85,7 +98,7 @@ export interface PromptsReport {
 }
 
 export interface PromptActionReport {
-  action: 'init' | 'align';
+  action: 'init' | 'align' | 'save';
   snapshotId: string;
   message: string;
   report: PromptsReport;
@@ -94,6 +107,21 @@ export interface PromptActionReport {
 export interface PromptActionRequest {
   action: 'init' | 'align';
   agent?: string;
+}
+
+export interface PromptSourceContent {
+  path: string;
+  exists: boolean;
+  content: string;
+  bytes: number;
+}
+
+export interface PromptSaveRequest {
+  content: string;
+}
+
+export interface PromptSaveReport extends PromptActionReport {
+  content: PromptSourceContent;
 }
 
 // ---- settings / MCP ----
@@ -157,6 +185,8 @@ export interface SnapshotManifest {
   operation: string;
   entries: SnapshotEntry[];
   created: string[];
+  /** Restore regular files by overwriting their content instead of replacing the inode. */
+  writeInPlace?: boolean;
 }
 
 export interface RestoreReport {
@@ -168,4 +198,165 @@ export interface RestoreReport {
 export interface RestoreResponse {
   report: RestoreReport;
   matrix: MatrixResponse;
+  /** Snapshot taken right before the restore; restoring it undoes this restore. */
+  snapshotId?: string;
 }
+
+// ---- app lifecycle ----
+
+export interface HealthResponse {
+  app: string;
+  version: string;
+  pid: number;
+  port: number;
+  url: string;
+  source: string;
+  dataDir: string;
+  startedAt: string;
+  uptimeSeconds: number;
+}
+
+export interface OpenResponse {
+  opened: string;
+}
+
+// ---- editable settings ----
+
+export type SettingsFieldType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'json';
+
+/** A simplified, renderable field derived from an agent's official schema. */
+export interface SettingsField {
+  key: string;
+  /** Dot path inside the settings object (used by the translation catalog). */
+  path?: string;
+  type: SettingsFieldType;
+  description?: string;
+  default?: unknown;
+  enum?: Array<string | number | boolean>;
+  /** Enum values that are suggestions only; any string is allowed. */
+  suggestions?: Array<string | number | boolean>;
+  minimum?: number;
+  maximum?: number;
+  pattern?: string;
+  sensitive?: boolean;
+  deprecated?: boolean;
+  /** Managed-settings-only key: writing it to a user file has no effect. */
+  managedOnly?: boolean;
+  /** The value is executed as a command when the agent runs; confirm before writing. */
+  executable?: boolean;
+  /** True when the object is a free-form key/value map. */
+  map?: boolean;
+  mapValue?: SettingsField;
+  /** Known keys for a free-form map (used as autocomplete suggestions). */
+  knownKeys?: Array<{ key: string; description?: string }>;
+  additionalLabel?: string;
+  long?: boolean;
+  fields?: SettingsField[];
+  items?: SettingsField;
+  group?: string;
+  hidden?: boolean;
+}
+
+export interface SettingsSection {
+  key: string;
+  label: string;
+  fields: SettingsField[];
+}
+
+export interface SettingsAgentCatalog {
+  key: string;
+  label: string;
+  schemaUrl: string;
+  common: string[];
+  sections: SettingsSection[];
+  mcp: { fileId: string; key: string };
+}
+
+export interface SettingsCatalog {
+  agents: SettingsAgentCatalog[];
+}
+
+export type SettingsFormat = 'json' | 'toml';
+export type SettingsScope = 'full' | 'mcp';
+
+export interface SettingsFileDescriptor {
+  id: string;
+  agent: string;
+  label: string;
+  path: string;
+  format: SettingsFormat;
+  role: string;
+  /** full: `data` is the whole file object. mcp: `data` is only the server map. */
+  scope: SettingsScope;
+  /** For scope mcp, the key that holds the map inside the host file. */
+  mcpKey?: string;
+  /** For scope mcp, the file that actually stores the map when it differs from `path`. */
+  hostPath?: string;
+}
+
+export interface SettingsFileState extends SettingsFileDescriptor {
+  exists: boolean;
+  /** Hash of the on-disk text (or "missing"); saves must send it back. */
+  etag: string;
+  bytes?: number;
+  data?: unknown;
+  /** Canonical text (full file, or the mcp map) for the raw editor. */
+  text?: string;
+  parseError?: string;
+}
+
+export interface SettingsAgentFiles {
+  key: string;
+  label: string;
+  files: SettingsFileState[];
+}
+
+export interface SettingsReport {
+  agents: SettingsAgentFiles[];
+}
+
+export interface SettingsSaveRequest {
+  fileId: string;
+  etag: string;
+  /** Structured object; ignored when `text` is present. */
+  data?: unknown;
+  /** Raw JSON/TOML text; the server validates it before writing. */
+  text?: string;
+}
+
+export interface SettingsSaveResult {
+  snapshotId: string;
+  file: SettingsFileState;
+}
+
+export interface SettingsFieldError {
+  path: string;
+  message: string;
+}
+
+// ---- model catalog ----
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  /** `default` for bare IDs, otherwise the prefix before the first slash. */
+  group: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  thinking?: boolean;
+  effort?: boolean;
+  imageInput?: boolean;
+  pdfInput?: boolean;
+}
+
+export interface ModelsReport {
+  /** The URL that was queried. */
+  source: string;
+  fetchedAt: string;
+  cached: boolean;
+  /** True when the endpoint failed but an older cached list is being used. */
+  stale?: boolean;
+  error?: string;
+  models: ModelInfo[];
+}
+

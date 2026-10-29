@@ -2,15 +2,22 @@
   "name": "agent-manager",
   "private": true,
   "type": "module",
-  "description": "Local overview of skills across Claude Code, Codex and pi",
+  "description": "Local manager for skills, global prompts and settings across Claude Code, Codex and pi",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "node --watch server/index.ts",
+    "dev:api": "node --watch server/index.ts --no-window",
     "dev:web": "vite --config web/vite.config.ts",
     "test": "node --test \"server/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config web/vite.config.ts",
-    "start": "node server/index.ts"
+    "build:catalog": "node scripts/build-settings-catalog.mjs",
+    "start": "node server/index.ts",
+    "build:exe": "npm run build:catalog && node scripts/build-exe.mjs",
+    "verify:exe": "node scripts/verify-exe.mjs",
+    "install:shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
+    "install:autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1 -AutoStart",
+    "uninstall:shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1 -Uninstall",
+    "check": "npm run typecheck && npm test"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -23,7 +30,10 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
     "typescript": "^7.0.2",
     "vite": "^7.3.7"
-  }
+  },
+  "version": "0.4.0"
 }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { hashDir, scanMatrix } from './scan.ts';
+import { hashDir, isInside, scanMatrix } from './scan.ts';
 import type { Matrix } from '../shared/types.ts';
 
 let root: string;
@@ -130,4 +130,21 @@ test('an absent agent directory is not detected and every cell is missing', () =
 
 test('hashDir terminates when a skill contains a link back to itself', () => {
   assert.match(hashDir(join(source, 'alpha')), /^[0-9a-f]{64}$/);
+});
+
+test('containment rejects the parent itself and only folds case on Windows', () => {
+  const parent = join(root, 'Source');
+  assert.equal(isInside(parent, parent), false);
+  assert.equal(isInside(join(root, 'Source', 'alpha'), parent), true);
+  assert.equal(isInside(join(root, 'Other', 'alpha'), parent), false);
+
+  const upperCase = join(root, 'SOURCE', 'alpha');
+  if (process.platform === 'win32') {
+    assert.equal(isInside(upperCase, parent), true);
+    assert.equal(isInside(upperCase, parent, false), false);
+    // Forward slashes are the same separator on Windows.
+    assert.equal(isInside(`${parent.replaceAll('\\', '/')}/alpha`, parent), true);
+  } else {
+    assert.equal(isInside(upperCase, parent), false);
+  }
 });

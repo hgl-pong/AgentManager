@@ -29,7 +29,7 @@ parent: architecture
 
 - 只有含 `SKILL.md` 的目录算 skill。容器目录（如 `~/.codex/skills/.system`）因此自然被排除；坏链无法验证，仍保留成行——它正是需要被看见的东西。
 - 链接判定依赖 Node 在 Windows 上把 junction 报告为符号链接（实测成立），不使用 `cmd /c dir /AL`。
-- 路径包含判定按小写、反斜杠归一后比较，因为 Windows 文件系统大小写不敏感。
+- 路径包含判定用导出的 `isInside(child, parent)`：Windows 下统一分隔符并忽略大小写，POSIX 保持原样逐字节比较；`child` 等于 `parent` 不算「在内部」。静态资源的前缀校验复用同一函数。
 
 **哈希**：`hashDir` 递归收集 `相对路径:文件内容 sha256`，排序后合并再取 sha256。符号链接一律跳过，因此技能目录里的自指链接不会让遍历挂死。`copy` 与源同名 skill 各算一次比较，只暴露「一致 / 不一致」，不暴露 diff。
 

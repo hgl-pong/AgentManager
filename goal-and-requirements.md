@@ -33,13 +33,14 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 1. **现状总览** — 三个视图（skills / 提示词 / settings / MCP）共用一条顶部摘要（提示词同步数、MCP server 数）；skills 视图用矩阵列出每个 skill 在每个 agent 的状态（已链接 / 副本 / 孤儿 / 缺失 / 链接失效 / 外部链接）。只有含 `SKILL.md` 的目录算一个 skill，容器目录（如 Codex 的 `.system`）不计。
 2. **skills 对齐** — 以 `~/.agents/skills` 为源，对每个 agent 目录逐 skill 显示上述状态；支持为其建链、把孤儿副本导入源、删除多余副本（删除前进入快照）。首次运行只扫描并接管现有链接，不批量改动。
 3. **全局提示词单一源** — 新建 `~/.agents/prompts/global.md` 作为唯一正文，`CLAUDE.md` 与 `AGENTS.md` 改为指向它的链接；在界面里编辑源即刻对所有 agent 生效。首次迁移以内容更全的 `CLAUDE.md` 为准，原两份文件先备份。
-4. **settings / MCP 只读对比** — 展示三个 agent 的配置文件位置、MCP server 清单与逐字段差异，提供一键用系统默认编辑器打开。只读，不写回。
-5. **写前自动快照** — 任何写操作（建链、删副本、改提示词）前先保存受影响文件或目录，界面可回滚到任一快照。第 2、3 项都是批量改链接，这是兜底。
+4. **settings 可编辑** — 以三家官方 schema 生成 settings catalog，按分组渲染表单：文件里没有的键也能填，留空即不写入；MCP server 提供结构化编辑器（Claude 写 `~/.claude.json`，Codex 写 `config.toml`，pi 写 `mcp.json`），每个文件另有原始 JSON/TOML 编辑器。保存前快照、etag 冲突检测、原子写；未知键保留，托管专用键标记为「仅托管生效」。
+5. **写前自动快照** — 任何写操作（建链、删副本、改提示词、改 settings）前先保存受影响文件或目录，界面可回滚到任一快照。第 2、3、4 项都会改真实配置，这是兜底。
+6. **独立启动** — `npm run build:exe` 产出单个 `AgentManager.exe`（内嵌前端与 Node 运行时），双击即用；`--status` / `--stop` 管理后台实例，快捷方式经 `wscript` 启动不弹控制台。
 
 ## Non-Goals
 
 - 不管项目级配置：仓库内的 `.claude/`、`AGENTS.md`、`.agents/skills` 不在范围内（已决定只处理用户级全局配置）。
-- 不在界面内写回 settings / MCP 配置，修改交给外部编辑器。
+- 不写托管配置与企业策略：managed-settings 只读展示；`~/.claude.json` 只改 `mcpServers` 子树，其余状态原样保留。
 - 不服务 Claude Code、Codex、pi 之外的 agent（Gemini CLI、Copilot CLI、Kimi Code、CodeMaker 明确不做）。
 - 不做多用户、安装包、跨机器同步或云备份：单机、单用户、`127.0.0.1`。
 - 不代跑 agent：不启动会话、不代理模型请求。
@@ -49,10 +50,10 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 | 方面 | 选择 | 理由 |
 | --- | --- | --- |
 | 语言 | Node.js + TypeScript | 配置全是 JSON / TOML，Node 解析生态成熟，本机已有 node |
-| 形态 | 本地 HTTP 服务 + 浏览器界面 | 单用户单机，无需打包分发 |
+| 形态 | Node SEA 单文件 exe + 应用窗口 | 双击即用，目标机不需要 Node；界面仍是 127.0.0.1 上的 HTTP 服务 |
 | 目录链接 | Windows junction（`mklink /J`） | 目录链接不需要管理员权限，与现有 `~/.claude/skills` 的做法一致 |
-| 提示词文件链接 | 硬链接优先（免权限，编辑任一端改到同一份内容），失败回退 symlink，再退化为副本并在界面标为「独立副本」 | 已在测试中对临时目录验证三种回退。**注意**：这台机器上的真实迁移尚未执行 |
-| 配置解析 | JSON / TOML，只读 | 只做对比，无写回路径 |
+| 提示词文件链接 | 硬链接优先（免权限，编辑任一端改到同一份内容），失败回退 symlink，再退化为副本并在界面标为「独立副本」 | 已在测试中对临时目录验证三种回退。**本机迁移已执行**：`~/.agents/prompts/global.md` 已建立，`CLAUDE.md` / `AGENTS.md` 为硬链接；pi 的 `AGENTS.md` 尚未对齐 |
+| 配置解析 | JSON / TOML，读写 | 表单与原始编辑器都需要写回；写入走 schema 校验、快照与原子替换 |
 | 快照 | 写前复制到本地快照目录 | 不依赖 git，回滚只需还原文件 |
 | 状态来源 | 每次加载直接扫描文件系统，不建索引库 | 配置会被手工或 agent 自身改动，缓存必然过期 |
 

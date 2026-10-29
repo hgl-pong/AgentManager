@@ -1,33 +1,70 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api.ts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, errorMessage, isAbortError } from '../api.ts';
 import type { SnapshotManifest } from '../../../shared/types.ts';
+
+function formatTime(snapshot: SnapshotManifest): string {
+  return new Date(snapshot.createdAt).toLocaleString('zh-CN');
+}
 
 export function SnapshotsPanel({ version, onRestored }: { version: number; onRestored: () => void }) {
   const [items, setItems] = useState<SnapshotManifest[]>([]);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<SnapshotManifest | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const seqRef = useRef(0);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
 
-  const load = useCallback(() => {
-    api
-      .snapshots()
-      .then(setItems)
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)));
+  useEffect(() => {
+    if (confirming) confirmRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [confirming]);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const seq = ++seqRef.current;
+    setLoading(true);
+    try {
+      const next = await api.snapshots(signal);
+      if (seq !== seqRef.current) return;
+      setItems(next);
+      setLoadError(null);
+    } catch (reason) {
+      if (seq !== seqRef.current || signal?.aborted || isAbortError(reason)) return;
+      setLoadError(errorMessage(reason));
+    } finally {
+      if (seq === seqRef.current) setLoading(false);
+    }
   }, []);
 
-  useEffect(load, [load, version]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load, version]);
 
-  async function restore(id: string) {
-    setBusy(id);
-    setError(null);
+  async function restore(snapshot: SnapshotManifest) {
+    if (busy) return;
+    setBusy(snapshot.id);
+    setConfirming(null);
+    setNotice(null);
+    setRestoreError(null);
     try {
-      const result = await api.restore(id);
-      setNotice(`已还原 ${result.report.restored.length} 项，移除 ${result.report.removed.length} 项新建内容`);
-      load();
+      const { report, snapshotId } = await api.restore(snapshot.id);
+      const safe = snapshotId ? ` · 安全快照 ${snapshotId}` : '';
+      if (report.missing.length > 0) {
+        setNotice(`还原完成但不完整：已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
+        setRestoreError(
+          `${report.missing.length} 项无法还原（快照里没有对应备份）：${report.missing.join('、')}`,
+        );
+      } else {
+        setNotice(`已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
+      }
       onRestored();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setNotice(null);
+      setRestoreError(errorMessage(reason));
     } finally {
       setBusy(null);
     }
@@ -36,31 +73,91 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
   return (
     <section className="snapshots">
       <header>
-        <button type="button" className="link-button" onClick={() => setOpen(!open)}>
-          {open ? '▾' : '▸'} 快照（{items.length}）
+        <button
+          type="button"
+          className="link-button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? '▾' : '▸'} 快照（{loading && items.length === 0 ? '…' : items.length}）
         </button>
         {notice && <span className="notice inline">{notice}</span>}
       </header>
-      {error && <p className="error">{error}</p>}
+
+      {loadError && (
+        <div className="error">
+          读取快照失败：{loadError}
+          {items.length > 0 ? '（显示的是上次读取的列表）' : ''}
+          <button type="button" onClick={() => void load()}>
+            重试
+          </button>
+        </div>
+      )}
+      {restoreError && <p className="error">{restoreError}</p>}
+
       {open && (
-        <ul className="snapshot-list">
-          {items.length === 0 && <li className="muted">还没有快照——第一次写操作时会自动创建。</li>}
-          {items.map((snapshot) => (
-            <li key={snapshot.id}>
-              <div>
-                <code>{snapshot.operation}</code>
-                <span className="meta">
-                  {' '}
-                  · {new Date(snapshot.createdAt).toLocaleString('zh-CN')} · 备份 {snapshot.entries.length} 项
-                  {snapshot.created.length > 0 ? `，新建 ${snapshot.created.length} 项` : ''}
-                </span>
-              </div>
-              <button type="button" onClick={() => restore(snapshot.id)} disabled={busy === snapshot.id}>
-                {busy === snapshot.id ? '还原中…' : '还原'}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          {loading && items.length === 0 ? (
+            <p className="muted">读取快照…</p>
+          ) : loadError && items.length === 0 ? (
+            <p className="muted">快照列表暂时读取失败，可重试。</p>
+          ) : items.length === 0 ? (
+            <p className="muted">还没有快照——第一次写操作时会自动创建。</p>
+          ) : (
+            <ul className="snapshot-list">
+              {items.map((snapshot) => (
+                <li key={snapshot.id}>
+                  <div>
+                    <code>{snapshot.id}</code>
+                    <span className="meta">
+                      {' '}
+                      · <code>{snapshot.operation}</code> · {formatTime(snapshot)} · 备份 {snapshot.entries.length} 项
+                      {snapshot.created.length > 0 ? `，新建 ${snapshot.created.length} 项` : ''}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotice(null);
+                      setRestoreError(null);
+                      setConfirming(snapshot);
+                    }}
+                    disabled={busy !== null}
+                    aria-label={`还原快照 ${snapshot.id}（${formatTime(snapshot)}）`}
+                  >
+                    {busy === snapshot.id ? '还原中…' : '还原'}
+                  </button>
+                  {confirming?.id === snapshot.id && (
+                    <div className="confirm" ref={confirmRef}>
+                      <span>
+                        还原快照 <code>{confirming.id}</code>（{formatTime(confirming)}，操作：
+                        <code>{confirming.operation}</code>）？当前文件会被快照内容覆盖。
+                      </span>
+                      <span className="confirm-actions">
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={() => void restore(confirming)}
+                          disabled={busy !== null}
+                          autoFocus
+                        >
+                          {busy !== null ? '还原中…' : '确认还原'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(null)}
+                          disabled={busy !== null}
+                        >
+                          取消
+                        </button>
+                      </span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

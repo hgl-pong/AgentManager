@@ -1,14 +1,36 @@
-import { copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname } from 'node:path';
-import { createSnapshot } from './snapshot.ts';
+import { AppError } from '../shared/types.ts';
+import { createSnapshot, markSnapshotFailed } from './snapshot.ts';
 
-import type { PromptActionReport, PromptLink, PromptsReport, PromptTargetSpec } from '../shared/types.ts';
+import type {
+  PromptActionReport,
+  PromptLink,
+  PromptsReport,
+  PromptSaveReport,
+  PromptSourceContent,
+  PromptTargetSpec,
+} from '../shared/types.ts';
 
 export type {
   PromptActionReport,
   PromptLink,
   PromptsReport,
+  PromptSaveReport,
+  PromptSourceContent,
   PromptState,
   PromptTargetReport,
   PromptTargetSpec,
@@ -124,24 +146,31 @@ export function initPrompts(input: PromptActionInput): PromptActionReport {
   const existing = readOrNull(input.source);
 
   if (existing === null && primaryText === null) {
-    throw new Error('既没有源文件，也没有可迁移的提示词内容');
+    throw new AppError(400, '既没有源文件，也没有可迁移的提示词内容');
   }
 
-  const snapshot = createSnapshot(
-    input.snapshotRoot,
-    'prompts init',
-    input.targets.map((target) => target.path),
-    existing === null ? [input.source] : [],
-  );
+  // Targets that do not exist yet are created by this action, so a restore must delete them.
+  const createdTargets = input.targets
+    .filter((target) => lstatOrNull(target.path) === null)
+    .map((target) => target.path);
+  const snapshot = createSnapshot(input.snapshotRoot, 'prompts init', input.targets.map((target) => target.path), [
+    ...(existing === null ? [input.source] : []),
+    ...createdTargets,
+  ]);
 
-  if (existing === null) {
-    mkdirSync(dirname(input.source), { recursive: true });
-    writeFileSync(input.source, primaryText ?? '');
-  }
+  try {
+    if (existing === null) {
+      mkdirSync(dirname(input.source), { recursive: true });
+      writeFileSync(input.source, primaryText ?? '');
+    }
 
-  for (const target of input.targets) {
-    mkdirSync(dirname(target.path), { recursive: true });
-    linkFile(input.source, target.path);
+    for (const target of input.targets) {
+      mkdirSync(dirname(target.path), { recursive: true });
+      linkFile(input.source, target.path);
+    }
+  } catch (error) {
+    markSnapshotFailed(input.snapshotRoot, snapshot.id);
+    throw error;
   }
 
   return {
@@ -152,15 +181,78 @@ export function initPrompts(input: PromptActionInput): PromptActionReport {
   };
 }
 
+/** Reads the canonical prompt text for the in-browser editor. Never writes. */
+export function readPromptSource(source: string): PromptSourceContent {
+  const content = readOrNull(source);
+  return {
+    path: source,
+    exists: content !== null,
+    content: content ?? '',
+    bytes: content === null ? 0 : Buffer.byteLength(content),
+  };
+}
+
+/**
+ * Saves the canonical prompt in place. Writing in place (instead of rename) is required:
+ * a rename would give the source a new inode and silently detach every hard-linked target.
+ */
+export function savePromptSource(input: PromptActionInput, content: string): PromptSaveReport {
+  if (Buffer.byteLength(content) > 1_000_000) throw new AppError(400, '提示词内容超过 1MB 上限');
+
+  const stat = lstatOrNull(input.source);
+  if (stat?.isSymbolicLink()) throw new AppError(409, '源文件是符号链接，为避免写到链接目标，拒绝保存');
+
+  const snapshot = createSnapshot(
+    input.snapshotRoot,
+    'prompts save',
+    stat ? [input.source] : [],
+    stat ? [] : [input.source],
+    new Date(),
+    { writeInPlace: true },
+  );
+
+  try {
+    mkdirSync(dirname(input.source), { recursive: true });
+    writeFileSync(input.source, content, 'utf8');
+  } catch (error) {
+    markSnapshotFailed(input.snapshotRoot, snapshot.id);
+    throw error;
+  }
+
+  return {
+    action: 'save',
+    snapshotId: snapshot.id,
+    message: '已保存单一源；硬链接目标立即生效',
+    report: scanPrompts(input.source, input.targets),
+    content: readPromptSource(input.source),
+  };
+}
+
+function lstatOrNull(path: string) {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
 /** Re-points one target at the source, backing the old file up first. */
 export function alignPrompt(input: PromptActionInput, key: string): PromptActionReport {
   const target = input.targets.find((candidate) => candidate.key === key);
-  if (!target) throw new Error(`未知的 agent：${key}`);
-  if (!existsSync(input.source)) throw new Error('源文件还不存在，先执行初始化');
+  if (!target) throw new AppError(400, `未知的 agent：${key}`);
+  if (!existsSync(input.source)) throw new AppError(409, '源文件还不存在，先执行初始化');
 
-  const snapshot = createSnapshot(input.snapshotRoot, `prompts align ${target.label}`, [target.path]);
-  mkdirSync(dirname(target.path), { recursive: true });
-  linkFile(input.source, target.path);
+  // A target that does not exist yet is created here; restoring must remove it again.
+  const existed = lstatOrNull(target.path) !== null;
+  const snapshot = createSnapshot(input.snapshotRoot, `prompts align ${target.label}`, [target.path], existed ? [] : [target.path]);
+
+  try {
+    mkdirSync(dirname(target.path), { recursive: true });
+    linkFile(input.source, target.path);
+  } catch (error) {
+    markSnapshotFailed(input.snapshotRoot, snapshot.id);
+    throw error;
+  }
 
   return {
     action: 'align',

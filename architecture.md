@@ -15,16 +15,26 @@ parent: agent-manager
 ## Decisions
 
 ```
+应用窗口（Edge/Chrome --app）──▶ AgentManager.exe ──▶ 内嵌 dist/ + Node SEA
+                                      │
+                                      ├─ 单实例：data/runtime.json + /api/health
+                                      └─ HTTP API 7788 ──▶ server/*.ts ──▶ 文件系统
+
 浏览器 ──dev──▶ Vite 5173 ──/api 代理──▶ Node API 7788 ──▶ server/*.ts ──▶ 文件系统
 浏览器 ──start─▶ Node API 7788（同时直接服务 dist/）
 ```
 
+- **独立程序用 Node SEA 打包**：`scripts/build-exe.mjs` 用 esbuild 把服务端打成 CJS，把 `dist/` 以 base64 注入 `virtual:assets`，再生成 SEA blob 注入 `node.exe`。产物先写到 `.build/release-next`，成功后才替换 `release/` 里的 exe 与 vbs，`release/data` 与其它文件不被构建清理。目标机不需要安装 Node，前端也不依赖同目录的 `dist/`。
+- **窗口是应用窗口，不是浏览器标签**：启动器用 Edge/Chrome 的 `--app=<url>` 打开，找不到浏览器再退回系统默认浏览器。exe 构建完成后把 PE 子系统从 console 改成 GUI，双击不再分配控制台窗口；启动失败时 exe 用系统消息框提示并写 `app.log`。`AgentManager.vbs`/快捷方式仍保留，用于显式隐藏启动。
+- **单实例**：数据目录里的 `runtime.lock` 独占锁 + `runtime.json` 记录 pid/port/url。再次启动先等锁、再做多次健康检查，命中后只在 `health.dataDir` 与当前目录一致时复用；`--status` / `--stop` 走同一份状态，不同数据目录互不干扰。默认 `data/` 不可写时回退到用户状态目录（`%LOCALAPPDATA%\AgentManager`）。
+- **本地写接口的来源校验**：所有 `POST /api/*` 校验 Host、Origin 与 `Content-Type: application/json`，避免任意网页用简单请求改写配置或关闭程序。
 - **后端跑源码**：Node 24 原生剥离类型，`node server/index.ts` 直接运行 `.ts`，不引入构建步骤或 tsx。`tsc --noEmit` 只用于类型检查。
 - **契约共享**：`shared/types.ts` 同时被 `server/` 与 `web/` 导入，API 形状只定义一次，且不含 `node:` 导入。
 - **每次请求实时扫描**：`GET /api/matrix` 每次重新读目录、重算哈希。实测 477 个文件 / 8MB 约 15ms，缓存只会带来过期状态。
 - **链接是首选共享方式**：skill 目录用 Windows junction（`fs.symlinkSync(..., 'junction')`，不需管理员权限），提示词文件用硬链接（编辑任一端都改到同一份内容）。扫描的主轴因此是「链接 / 实体」，不是文件内容。
 - **写路径先快照**：三个 skills 动作与两个提示词动作都先调用 `createSnapshot`，把受影响路径和将要新建的路径登记下来，失败也能还原。
-- **settings / MCP 只读**：可以对比、可以交给编辑器打开，但任何代码路径都不写配置文件。
+- **settings 写回是受控路径**：界面编辑用户级配置（`~/.claude/settings.json`、`~/.claude.json` 的 `mcpServers` 子树、`~/.codex/config.toml`、`~/.pi/agent/settings.json` 与 `mcp.json`）。字段目录由 `scripts/build-settings-catalog.mjs` 从 `schemas/` 的三份官方 schema 生成；保存先校验、再快照、最后临时文件 + rename 原子替换，etag 不一致返回 409。未知键原样保留；托管专用键只展示并标注。
+- **模型清单是运行期数据**：`server/models.ts` 从 `AGENT_MANAGER_MODELS_URL`（默认 `http://127.0.0.1:15721/v1`）拉取 OpenAI 兼容的 `/models`，内存缓存 60 秒，失败回退缓存；前端「模型」页签据此为三个 agent 选择模型，字段表单也复用这份候选。
 - **前端用 Vite + React**：后续交互都带确认与回滚状态，比起服务端直出少一次重写。
 - **Vite 锁在 7.x**：Vite 8（rolldown）无法解析 `react-dom/client` 里的相对 CJS 引用，构建失败；7.x 构建正常。
 

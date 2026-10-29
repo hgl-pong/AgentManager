@@ -21,6 +21,19 @@ export type {
 } from '../shared/types.ts';
 
 const SECRET_KEY = /(key|token|secret|password|auth)/i;
+const SECRET_FLAG = /^--?(?:api[-_]?key|token|secret|password|auth|access[-_]?token|bearer)$/i;
+const TOKEN_PREFIX = /^(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat|glpat|xox[baprs]|AKIA)[-_A-Za-z0-9]{6,}$/;
+
+/** Values that look like minted credentials rather than paths or words. */
+function looksLikeToken(value: string): boolean {
+  if (TOKEN_PREFIX.test(value)) return true;
+  return (
+    value.length >= 24 &&
+    /^[A-Za-z0-9_.=+-]+$/.test(value) &&
+    /[0-9]/.test(value) &&
+    /[A-Za-z]/.test(value)
+  );
+}
 
 function summarize(value: unknown, key: string): string {
   if (typeof value === 'string') {
@@ -33,13 +46,53 @@ function summarize(value: unknown, key: string): string {
   return String(value);
 }
 
+/** Drops the user:password part a server URL may embed. */
+function summarizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString();
+  } catch {
+    return url.replace(/\/\/[^/@\s]*@/, '//');
+  }
+}
+
+/** Masks credential flags (`--api-key secret`, `--token=x`) and token-shaped arguments. */
+function summarizeArguments(args: string[]): string[] {
+  const masked: string[] = [];
+  let redactNext = false;
+  for (const argument of args) {
+    if (redactNext) {
+      masked.push('••••••');
+      redactNext = false;
+      continue;
+    }
+    const separator = argument.indexOf('=');
+    if (argument.startsWith('-') && separator > 0) {
+      const flag = argument.slice(0, separator);
+      if (SECRET_FLAG.test(flag)) {
+        masked.push(`${flag}=••••••`);
+        continue;
+      }
+    }
+    if (SECRET_FLAG.test(argument)) {
+      masked.push(argument);
+      redactNext = true;
+      continue;
+    }
+    masked.push(looksLikeToken(argument) ? '••••••' : argument);
+  }
+  return masked;
+}
+
 function summarizeServer(server: unknown): string {
   if (!server || typeof server !== 'object') return String(server);
   const record = server as Record<string, unknown>;
-  if (typeof record.url === 'string') return record.url;
+  if (typeof record.url === 'string') return summarizeUrl(record.url);
   const command = typeof record.command === 'string' ? record.command : '';
   const args = Array.isArray(record.args) ? record.args.map(String) : [];
-  return [command, ...args].filter(Boolean).join(' ');
+  return [command, ...summarizeArguments(args)].filter(Boolean).join(' ');
 }
 
 function readConfigFile(spec: ConfigFileSpec): { data?: Record<string, unknown>; report: ConfigFileReport } {
@@ -48,10 +101,14 @@ function readConfigFile(spec: ConfigFileSpec): { data?: Record<string, unknown>;
   let text: string;
   try {
     const stat = statSync(spec.path);
-    text = readFileSync(spec.path, 'utf8');
     base.exists = true;
     base.bytes = stat.size;
-  } catch {
+    text = readFileSync(spec.path, 'utf8');
+  } catch (error) {
+    // Only a genuinely absent file is "not exists"; every other failure must surface as an error.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      base.error = error instanceof Error ? error.message : String(error);
+    }
     return { report: base };
   }
 

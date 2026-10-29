@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { alignPrompt, initPrompts, scanPrompts } from './prompts.ts';
 import { restoreSnapshot } from './snapshot.ts';
+import { AppError } from '../shared/types.ts';
 import type { PromptTargetSpec } from './prompts.ts';
 
 let root: string;
@@ -31,6 +32,8 @@ after(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
+const allowedRoots = () => [source, ...targets.map((target) => target.path)];
+
 test('without a source every target reports no-source', () => {
   const report = scanPrompts(source, targets);
   assert.equal(report.source.exists, false);
@@ -52,7 +55,7 @@ test('init migrates the primary file into the source and links every target', ()
   writeFileSync(claudePath, 'prompt v2');
   assert.equal(readFileSync(source, 'utf8'), 'prompt v2');
 
-  restoreSnapshot(snapshotRoot, result.snapshotId);
+  restoreSnapshot(snapshotRoot, result.snapshotId, allowedRoots());
   assert.equal(existsSync(source), false);
   assert.equal(readFileSync(claudePath, 'utf8'), 'prompt v1');
   assert.equal(readFileSync(targets[1]?.path as string, 'utf8'), 'older prompt');
@@ -76,7 +79,7 @@ test('align replaces a drifting copy with a link and can be rolled back', () => 
   assert.equal(result.report.targets[1]?.state, 'synced');
   assert.equal(readFileSync(source, 'utf8'), 'canonical');
 
-  restoreSnapshot(snapshotRoot, result.snapshotId);
+  restoreSnapshot(snapshotRoot, result.snapshotId, allowedRoots());
   assert.equal(readFileSync(codexPath, 'utf8'), 'changed by hand');
 });
 
@@ -99,6 +102,81 @@ test('a link to another file is reported as external-link, a dangling one as bro
   assert.equal(report.targets[0]?.state, 'broken');
 });
 
-test('align refuses an unknown agent', () => {
-  assert.throws(() => alignPrompt({ source, snapshotRoot, targets }, 'nope'), /未知的 agent/);
+test('align refuses an unknown agent with 400', () => {
+  assert.throws(
+    () => alignPrompt({ source, snapshotRoot, targets }, 'nope'),
+    (error: unknown) => error instanceof AppError && error.status === 400,
+  );
+});
+
+test('init without a source or a primary file is a 400', () => {
+  const empty = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-empty-'));
+  try {
+    const emptyTargets = [{ key: 'claude', label: 'Claude Code', path: join(empty, '.claude', 'CLAUDE.md') }];
+    assert.throws(
+      () =>
+        initPrompts({
+          source: join(empty, '.agents', 'prompts', 'global.md'),
+          snapshotRoot: join(empty, 'snapshots'),
+          targets: emptyTargets,
+          primaryKey: 'claude',
+        }),
+      (error: unknown) => error instanceof AppError && error.status === 400,
+    );
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('init registers targets it creates so a restore removes them', () => {
+  const extra = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-extra-'));
+  try {
+    const extraSource = join(extra, '.agents', 'prompts', 'global.md');
+    const extraSnapshotRoot = join(extra, 'snapshots');
+    const extraTargets: PromptTargetSpec[] = [
+      { key: 'claude', label: 'Claude Code', path: join(extra, '.claude', 'CLAUDE.md') },
+      { key: 'codex', label: 'Codex', path: join(extra, '.codex', 'AGENTS.md') },
+    ];
+    writePrompt(extraTargets[0]?.path as string, 'seed prompt');
+
+    const result = initPrompts({
+      source: extraSource,
+      snapshotRoot: extraSnapshotRoot,
+      targets: extraTargets,
+      primaryKey: 'claude',
+    });
+
+    assert.equal(existsSync(extraTargets[1]?.path as string), true);
+    restoreSnapshot(extraSnapshotRoot, result.snapshotId, [extraSource, ...extraTargets.map((target) => target.path)]);
+
+    assert.equal(existsSync(extraTargets[1]?.path as string), false);
+    assert.equal(existsSync(extraSource), false);
+    assert.equal(readFileSync(extraTargets[0]?.path as string, 'utf8'), 'seed prompt');
+  } finally {
+    rmSync(extra, { recursive: true, force: true });
+  }
+});
+
+test('align registers a target it creates so a restore removes it', () => {
+  const extra = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-align-'));
+  try {
+    const extraSource = join(extra, '.agents', 'prompts', 'global.md');
+    const extraSnapshotRoot = join(extra, 'snapshots');
+    const extraTargets: PromptTargetSpec[] = [
+      { key: 'claude', label: 'Claude Code', path: join(extra, '.claude', 'CLAUDE.md') },
+    ];
+    writePrompt(extraSource, 'canonical');
+    assert.equal(existsSync(extraTargets[0]?.path as string), false);
+
+    const result = alignPrompt(
+      { source: extraSource, snapshotRoot: extraSnapshotRoot, targets: extraTargets, primaryKey: 'claude' },
+      'claude',
+    );
+    assert.equal(existsSync(extraTargets[0]?.path as string), true);
+
+    restoreSnapshot(extraSnapshotRoot, result.snapshotId, [extraSource, ...extraTargets.map((target) => target.path)]);
+    assert.equal(existsSync(extraTargets[0]?.path as string), false);
+  } finally {
+    rmSync(extra, { recursive: true, force: true });
+  }
 });

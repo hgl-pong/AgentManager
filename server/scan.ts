@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { join } from 'node:path';
 
 import type { AgentReport, AgentSpec, Cell, Matrix, Row, ScanInput } from '../shared/types.ts';
 
@@ -48,14 +48,34 @@ export function hashDir(dir: string): string {
   return hashBytes(Buffer.from(entries.join('\n')));
 }
 
-/** Windows paths are case-insensitive, so containment is decided on normalized lowercase paths. */
-function normalizePath(value: string): string {
-  return value.replaceAll('/', '\\').replace(/\\+$/, '').toLowerCase();
+/** Separator form for comparison: Windows accepts both slashes, POSIX keeps its exact bytes. */
+function normalizePath(value: string, caseInsensitive: boolean): string {
+  let normalized: string;
+  if (process.platform === 'win32') {
+    const unified = value.replaceAll('/', '\\');
+    normalized = /^[A-Za-z]:\\?$/.test(unified) ? `${unified.slice(0, 2)}\\` : unified.replace(/\\+$/, '');
+  } else {
+    normalized = value === '/' ? '/' : value.replace(/\/+$/, '');
+  }
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
 }
 
-function isInside(child: string, parent: string): boolean {
-  const rel = relative(normalizePath(parent), normalizePath(child));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+/**
+ * True when `child` lives strictly under `parent`; a child equal to the parent is not inside.
+ * Case folding happens only where the filesystem ignores case (Windows by default). Exported so
+ * the static-file guard shares the same comparison as the skill scan.
+ */
+export function isInside(
+  child: string,
+  parent: string,
+  caseInsensitive = process.platform === 'win32',
+): boolean {
+  const parentPath = normalizePath(parent, caseInsensitive);
+  const childPath = normalizePath(child, caseInsensitive);
+  if (childPath === parentPath) return false;
+  const separator = process.platform === 'win32' ? '\\' : '/';
+  const prefix = /[\\/]$/.test(parentPath) ? parentPath : `${parentPath}${separator}`;
+  return childPath.startsWith(prefix);
 }
 
 export function scanMatrix(input: ScanInput): Matrix {
