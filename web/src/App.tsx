@@ -21,20 +21,20 @@ const TABS = [
   {
     key: 'skills',
     label: 'skills',
-    title: 'skills 总览',
-    lede: '源目录与三个 agent 的链接、副本分布；可就地建链、导入、移除或清理坏链。',
+    title: 'skills',
+    lede: '查看每个 skill 在 Claude Code、Codex、pi 中的链接状态。',
   },
   {
     key: 'prompts',
     label: '提示词',
-    title: '全局提示词',
-    lede: '维护所有 agent 共享的单一源正文，并对齐各自的提示词文件。',
+    title: '提示词',
+    lede: '维护所有 agent 共用的全局提示词。',
   },
   {
     key: 'settings',
     label: '设置',
     title: '设置',
-    lede: '按官方 schema 编辑 Claude Code、Codex 与 pi 的用户级配置和 MCP server。',
+    lede: '编辑各 agent 的用户级配置与 MCP。',
   },
 ] as const;
 
@@ -83,6 +83,11 @@ export default function App() {
   const promptsHandle = useRef<PromptsHandle | null>(null);
   const settingsHandle = useRef<SettingsHandle | null>(null);
   const metaSeq = useRef(0);
+  const workspaceRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    workspaceRef.current?.scrollTo({ top: 0 });
+  }, [tab]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -264,12 +269,9 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            AM
-          </span>
           <span className="brand-copy">
             <strong>AgentManager</strong>
-            <span>本地 agent 配置中枢</span>
+            <span>本地配置</span>
           </span>
         </div>
 
@@ -281,20 +283,20 @@ export default function App() {
                 type="button"
                 role="tab"
                 id={`nav-${entry.key}`}
+                title={entry.title}
                 aria-selected={entry.key === tab}
                 aria-controls="workspace-panel"
                 className={entry.key === tab ? 'side-link is-active' : 'side-link'}
                 onClick={() => select(entry.key)}
               >
                 <span className="side-link-label">{entry.label}</span>
-                <span className="side-link-hint">{entry.title}</span>
               </button>
             ))}
           </div>
         </nav>
 
         <section className="side-agents" aria-labelledby="side-agents-title">
-          <h2 id="side-agents-title">agent 状态</h2>
+          <h2 id="side-agents-title">状态</h2>
           <div className="side-summary">
             <span>提示词 {promptSummary}</span>
             <span>MCP {mcpSummary}</span>
@@ -302,17 +304,13 @@ export default function App() {
           <ul>
             {agents.map((agent) => (
               <li key={agent.key} className="side-agent">
-                <span
-                  className={`status-dot${agent.detected ? ' is-on' : ''}`}
-                  aria-hidden="true"
-                />
-                <span className="sr-only">{agent.detected ? '已检测' : '未检测'}</span>
                 <span className="side-agent-copy">
                   <strong>{agent.label}</strong>
                   <span>
+                    {agent.detected ? '已检测' : '未检测'}
                     {agent.fileCount === null
-                      ? '配置文件未知'
-                      : `${agent.existsCount}/${agent.fileCount} 个文件`}
+                      ? ' · 配置文件未知'
+                      : ` · ${agent.existsCount}/${agent.fileCount} 个文件`}
                     {agent.promptState ? ` · ${PROMPT_STATE_SHORT[agent.promptState]}` : ''}
                   </span>
                 </span>
@@ -343,7 +341,6 @@ export default function App() {
       <div className="app-main">
         <header className="page-head">
           <div className="page-title">
-            <p className="eyebrow">AgentManager / {activeTab.label}</p>
             <h1>{activeTab.title}</h1>
             <p className="lede">{activeTab.lede}</p>
           </div>
@@ -373,6 +370,7 @@ export default function App() {
           id="workspace-panel"
           role="tabpanel"
           aria-labelledby={`nav-${activeTab.key}`}
+          ref={workspaceRef}
         >
           {notice && <p className="notice">{notice}</p>}
 

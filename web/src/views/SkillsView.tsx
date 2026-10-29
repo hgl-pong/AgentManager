@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
 import type { Cell, CellState, MatrixResponse, Row, SkillActionKind } from '../../../shared/types.ts';
 
-const ICON: Record<CellState, string> = {
-  linked: '🔗',
-  broken: '🔗✗',
-  external: '🔗↗',
-  copy: '📄',
-  orphan: '⚠',
-  missing: '—',
+const SHORT: Record<CellState, string> = {
+  linked: '链接',
+  broken: '坏链',
+  external: '外部',
+  copy: '副本',
+  orphan: '孤儿',
+  missing: '缺失',
 };
 
 const LABEL: Record<CellState, string> = {
@@ -117,8 +117,8 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
         </p>
         <ul className="legend">
           {(Object.keys(LABEL) as CellState[]).map((state) => (
-            <li key={state} className={`state-${state}`}>
-              <span aria-hidden="true">{ICON[state]}</span> {LABEL[state]}
+            <li key={state}>
+              <span className={`state-swatch state-${state}`} aria-hidden="true" /> {LABEL[state]}
             </li>
           ))}
           <li>
@@ -192,13 +192,12 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
                     const actions = actionsFor(cell, row);
                     return (
                       <td key={agent.key} className={`cell state-${cell.state}`} title={title(cell)}>
-                        <span aria-hidden="true">{ICON[cell.state]}</span>
+                        <span className="cell-state">{SHORT[cell.state]}</span>
                         {cell.state === 'copy' && cell.hashMatch === false && (
                           <span className="drift" aria-hidden="true">
                             ≠
                           </span>
                         )}
-                        <span className="sr-only">{LABEL[cell.state]}</span>
                         {actions.length > 0 && (
                           <span className="cell-actions">
                             {actions.map((entry) => (

@@ -92,6 +92,10 @@ function formatTokens(value: number | undefined): string {
   return String(value);
 }
 
+function compactPath(value: string): string {
+  return value.replace(/^[A-Za-z]:\\Users\\[^\\]+\\(?=\.)/i, '~\\');
+}
+
 function modelMeta(model: ModelInfo | undefined): string {
   if (!model) return '';
   const parts: string[] = [];
@@ -293,7 +297,21 @@ export function SettingsView({
   const [agentKey, setAgentKey] = useState('claude');
   const [nav, setNav] = useState<Nav>({ kind: 'common' });
   const [search, setSearch] = useState('');
-  const [showUnset, setShowUnset] = useState(true);
+  const [showUnset, setShowUnsetState] = useState(() => {
+    try {
+      return window.localStorage.getItem('agentmanager.showUnset') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setShowUnset = useCallback((next: boolean) => {
+    setShowUnsetState(next);
+    try {
+      window.localStorage.setItem('agentmanager.showUnset', next ? '1' : '0');
+    } catch {
+      // Preference persistence is best effort.
+    }
+  }, []);
   const [busy, setBusy] = useState<'load' | 'save' | 'reload' | 'overwrite' | null>('load');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -341,6 +359,21 @@ export function SettingsView({
   useEffect(() => {
     void loadModels(false);
   }, [loadModels]);
+
+  useEffect(() => {
+    contentRef.current?.closest('.workspace')?.scrollTo({ top: 0 });
+  }, [agentKey, nav.kind, nav.kind === 'section' ? nav.key : '']);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void saveAll();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [saveAll]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const seq = ++seqRef.current;
@@ -1118,40 +1151,54 @@ export function SettingsView({
         )}
         {modelsLoading && !models && <p className="muted">读取模型列表…</p>}
 
-        <div className="model-grid">
-          {targets.map((target) => {
-            const selected = models?.models.find((model) => model.id === target.value);
-            const custom =
-              target.value !== '' && !selected && (models?.models.length ?? 0) > 0;
-            return (
-              <article className="model-card" key={target.agentKey}>
-                <header>
-                  <h3>{target.agentLabel}</h3>
-                  <span className="tag">{target.file.format.toUpperCase()}</span>
-                </header>
-                <label className="model-field">
-                  <span>{target.label}</span>
-                  <input
-                    className="control"
-                    list={`model-list-${target.agentKey}`}
-                    value={target.value}
-                    placeholder="选择或输入模型 ID"
-                    spellCheck={false}
-                    autoComplete="off"
-                    onChange={(event) => applyModel(target, event.target.value)}
-                  />
-                </label>
-                {renderModelDatalist(target.agentKey)}
-                {selected && <p className="model-meta">{modelMeta(selected)}</p>}
-                {custom && <p className="hint">当前值不在模型列表中，仍会按原样保存。</p>}
-                {target.secondary && <p className="hint">{target.secondary}</p>}
-                {target.note && <p className="hint">{target.note}</p>}
-                <p className="path">
-                  <code>{target.file.path}</code>
-                </p>
-              </article>
-            );
-          })}
+        <div className="table-wrap model-table-wrap">
+          <table className="model-table">
+            <thead>
+              <tr>
+                <th scope="col">agent</th>
+                <th scope="col">模型</th>
+                <th scope="col">写入位置</th>
+              </tr>
+            </thead>
+            <tbody>
+              {targets.map((target) => {
+                const selected = models?.models.find((model) => model.id === target.value);
+                const custom =
+                  target.value !== '' && !selected && (models?.models.length ?? 0) > 0;
+                return (
+                  <tr key={target.agentKey}>
+                    <th scope="row">
+                      <span className="model-agent">{target.agentLabel}</span>
+                      <span className="meta">{target.file.format.toUpperCase()}</span>
+                    </th>
+                    <td>
+                      <input
+                        className="control"
+                        list={`model-list-${target.agentKey}`}
+                        value={target.value}
+                        placeholder="选择或输入模型 ID"
+                        spellCheck={false}
+                        autoComplete="off"
+                        aria-label={`${target.agentLabel} 模型`}
+                        onChange={(event) => applyModel(target, event.target.value)}
+                      />
+                      {renderModelDatalist(target.agentKey)}
+                      <div className="model-notes">
+                        {selected && <span className="model-meta">{modelMeta(selected)}</span>}
+                        {custom && <span className="hint">当前值不在模型列表中，仍会按原样保存。</span>}
+                        {target.secondary && <span className="hint">{target.secondary}</span>}
+                      </div>
+                    </td>
+                    <td className="model-source">
+                      <code title={target.file.path}>{compactPath(target.file.path)}</code>
+                      <span className="meta">{target.label}</span>
+                      {target.note && <span className="hint">{target.note}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         <p className="hint">
           模型源可用环境变量 <code>AGENT_MANAGER_MODELS_URL</code> 覆盖，默认
@@ -1391,7 +1438,6 @@ export function SettingsView({
               className={selected ? 'agent-tab is-active' : 'agent-tab'}
               onClick={() => chooseAgent(entry.key)}
             >
-              <span className={`agent-dot${detected ? ' is-detected' : ''}`} aria-hidden="true" />
               <span className="agent-name">{entry.label}</span>
               <span className="agent-meta">
                 {detected ? '已检测' : '未检测'} · {files.length} 个文件
@@ -1488,6 +1534,12 @@ export function SettingsView({
                 value={search}
                 placeholder="搜索字段、说明或路径…"
                 onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setSearch('');
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </label>
             <label className="check">
@@ -1561,7 +1613,7 @@ export function SettingsView({
             <span className="meta">
               {blockingCount > 0
                 ? `${blockingCount} 处错误需要修正后才能保存`
-                : '保存会逐个写入文件，并在写前自动创建快照。'}
+                : '保存前自动快照 · Ctrl+S 保存'}
             </span>
           </div>
           <div className="confirm-actions">
