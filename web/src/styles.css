@@ -2313,6 +2313,7 @@ tbody td {
 .cell-actions button {
   padding: 2px 6px;
   font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .model-card {
@@ -2752,7 +2753,22 @@ tbody td {
   border-left-color: var(--warning);
 }
 
+.hook-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.hook-table { min-width: 820px; }
+.hook-table td { text-align: center; vertical-align: top; }
+.hook-definitions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.hook-definition { min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.hook-definition legend { padding: 0 4px; }
+.hook-definition textarea { margin-top: 6px; min-height: 160px; }
+.hook-definition.is-off { padding: 0; border: 0; }
+.hook-definition.is-off legend { padding: 0; }
+.hook-table th:last-child,
+.hook-table td:last-child { min-width: 210px; white-space: nowrap; }
+.hook-table .mcpm-row-actions .cell-actions button { white-space: nowrap; }
+.mcpm-none { color: var(--text-dim); }
+.hook-legend .mcpm-none { color: var(--text-dim); }
 @media (max-width: 600px) {
+  .hook-definitions { grid-template-columns: 1fr; }
   .mcpm-form-grid {
     grid-template-columns: 1fr;
   }

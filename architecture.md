@@ -36,6 +36,7 @@ parent: agent-manager
 - **settings 写回是受控路径**：界面编辑用户级配置（`~/.claude/settings.json`、`~/.claude.json` 的 `mcpServers` 子树、`~/.codex/config.toml`、`~/.pi/agent/settings.json` 与 `mcp.json`）。字段目录由 `scripts/build-settings-catalog.mjs` 从 `schemas/` 的三份官方 schema 生成；保存先校验、再快照、最后临时文件 + rename 原子替换，etag 不一致返回 409。未知键原样保留；托管专用键只展示并标注。
 - **模型清单是运行期数据**：`server/models.ts` 从 `AGENT_MANAGER_MODELS_URL`（默认 `http://127.0.0.1:15721/v1`）拉取 OpenAI 兼容的 `/models`，内存缓存 60 秒，失败回退缓存；前端「模型」页签据此为三个 agent 选择模型，字段表单也复用这份候选。
 - **MCP 用源文件 + 同步**：`~/.agents/mcp/servers.json` 保存归一化定义（transport/command/args/env/cwd/url/headers），三家 agent 的配置按各自格式物化。矩阵比较核心字段，忽略 Codex/pi 特有字段；状态为 synced/drift/missing/orphan/invalid/unsupported。源写入与 agent 写入都先快照；agent 侧复用 settings 的 etag/校验/原子写。MCP 无法像 skills 一样用链接共享，所以这里是「同步副本」而不是链接。
+- **Hooks 用事件级源文件 + 同步**：`~/.agents/hooks/hooks.json` 按事件保存 `claude`/`codex` 的 matcher 组数组；Claude 写 `~/.claude/settings.json#hooks`，Codex 写 `~/.codex/hooks.json#hooks`。矩阵按事件比较；pi 无原生 hooks。Codex 修改 hooks 后需要用 `/hooks` 重新信任（哈希变化），同步时会提示。
 - **前端用 Vite + React**：后续交互都带确认与回滚状态，比起服务端直出少一次重写。
 - **Vite 锁在 7.x**：Vite 8（rolldown）无法解析 `react-dom/client` 里的相对 CJS 引用，构建失败；7.x 构建正常。
 

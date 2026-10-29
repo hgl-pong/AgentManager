@@ -8,6 +8,7 @@ import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
 import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
 import { buildMcpReport, runMcpAction } from './mcp.ts';
+import { buildHooksReport, runHooksAction } from './hooks.ts';
 import { getModelsReport } from './models.ts';
 import { isInside, scanMatrix } from './scan.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
@@ -20,6 +21,7 @@ import type {
   ConfigFileSpec,
   MatrixResponse,
   McpActionRequest,
+  HookActionRequest,
   PromptActionRequest,
   PromptTargetSpec,
   SettingsFileDescriptor,
@@ -59,6 +61,8 @@ export interface AppConfig {
   settingsFiles: SettingsFileDescriptor[];
   /** Single MCP source: <home>/.agents/mcp/servers.json. */
   mcpSource: string;
+  hooksSource: string;
+  codexHooks: string;
   openable: Set<string>;
 }
 
@@ -143,6 +147,8 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
 
   const settingsFiles = createSettingsRegistry({ home });
   const mcpSource = join(home, '.agents', 'mcp', 'servers.json');
+  const hooksSource = join(home, '.agents', 'hooks', 'hooks.json');
+  const codexHooks = join(home, '.codex', 'hooks.json');
 
   const openable = new Set(
     [
@@ -154,6 +160,8 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
       promptSource,
       ...promptTargets.map((target) => target.path),
       mcpSource,
+      hooksSource,
+      codexHooks,
     ].map((path) => path.toLowerCase()),
   );
 
@@ -173,6 +181,8 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     configFiles,
     settingsFiles,
     mcpSource,
+    hooksSource,
+    codexHooks,
     openable,
   };
 }
@@ -226,6 +236,8 @@ function restoreRoots(config: AppConfig): string[] {
     ...config.promptTargets.map((target) => target.path),
     ...config.settingsFiles.map((file) => file.hostPath ?? file.path),
     config.mcpSource,
+    config.hooksSource,
+    config.codexHooks,
   ];
 }
 
@@ -505,6 +517,16 @@ async function handleRequest(
   if (pathname === '/api/mcp' && request.method === 'POST') {
     const body = (await readJson(request)) as unknown as McpActionRequest;
     const result = await writes.run(() => runMcpAction(mcpInput(config), body));
+    json(response, 200, result);
+    return;
+  }
+
+  if (pathname === '/api/hooks' && (request.method === 'GET' || request.method === 'POST')) {
+    const input = { sourcePath: config.hooksSource, codexHooks: config.codexHooks,
+      snapshotRoot: config.snapshotRoot, settingsFiles: config.settingsFiles };
+    const body = request.method === 'POST' ? (await readJson(request)) as unknown as HookActionRequest : undefined;
+    const result = body === undefined ? buildHooksReport(input)
+      : await writes.run(() => runHooksAction(input, body));
     json(response, 200, result);
     return;
   }

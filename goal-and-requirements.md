@@ -37,6 +37,7 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 5. **写前自动快照** — 任何写操作（建链、删副本、改提示词、改 settings）前先保存受影响文件或目录，界面可回滚到任一快照。第 2、3、4 项都会改真实配置，这是兜底。
 6. **独立启动** — `npm run build:exe` 产出单个 `AgentManager.exe`（内嵌前端与 Node 运行时），双击即用；`--status` / `--stop` 管理后台实例，快捷方式经 `wscript` 启动不弹控制台。
 7. **MCP 单一源** — `~/.agents/mcp/servers.json` 是唯一源；矩阵按 agent 显示 已同步 / 有差异 / 缺失 / 孤儿 / 无效 / 不支持，支持收进源、同步、从源或 agent 移除。Claude/Codex/pi 的格式差异在写回时映射，未知字段保留。
+8. **Hooks 单一源** — `~/.agents/hooks/hooks.json` 以事件为单位保存 Claude/Codex 的 matcher 组与 handler；矩阵显示同步状态，支持导入、同步、移除；pi 没有原生 hooks。
 
 ## Non-Goals
 

@@ -9,6 +9,7 @@ import type {
   SettingsReport,
 } from '../../shared/types.ts';
 import { McpView } from './views/McpView.tsx';
+import { HooksView } from './views/HooksView.tsx';
 import { PromptsView } from './views/PromptsView.tsx';
 import type { PromptsHandle } from './views/PromptsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
@@ -30,6 +31,12 @@ const TABS = [
     label: 'MCP',
     title: 'MCP',
     lede: '统一维护 MCP server 源，并同步到 Claude Code、Codex 与 pi。',
+  },
+  {
+    key: 'hooks',
+    label: 'Hooks',
+    title: 'Hooks',
+    lede: '统一维护生命周期 hooks 源，并同步到 Claude Code 与 Codex。',
   },
   {
     key: 'prompts',
@@ -383,6 +390,7 @@ export default function App() {
 
           {tab === 'skills' && <SkillsView version={dataVersion} onChanged={changed} />}
           {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
+          {tab === 'hooks' && <HooksView version={dataVersion} onChanged={changed} />}
           {tab === 'prompts' && (
             <PromptsView
               version={dataVersion}

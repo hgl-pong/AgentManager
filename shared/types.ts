@@ -432,3 +432,68 @@ export interface McpActionResponse {
   report: McpMatrixReport;
 }
 
+// ---- Hooks management ----
+
+export type HookState = 'synced' | 'drift' | 'missing' | 'orphan' | 'unsupported' | 'none';
+
+export interface HookAgentInfo {
+  key: string;
+  label: string;
+  file: string;
+  format: SettingsFormat;
+  /** False for agents without native lifecycle hooks (pi). */
+  supported: boolean;
+}
+
+export interface HookMatrixCell {
+  state: HookState;
+  summary?: string;
+  error?: string;
+}
+
+export interface HookMatrixRow {
+  event: string;
+  inSource: boolean;
+  /** Agents that have a source definition for this event. */
+  sourceAgents: string[];
+  /** The source arrays, used to prefill the editor. */
+  source?: Record<string, unknown[]>;
+  cells: Record<string, HookMatrixCell>;
+}
+
+export interface HookMatrixReport {
+  source: {
+    path: string;
+    exists: boolean;
+    bytes?: number;
+    error?: string;
+    eventCount: number;
+  };
+  agents: HookAgentInfo[];
+  rows: HookMatrixRow[];
+  warnings?: string[];
+  /** Known event names for the editor's suggestions. */
+  events: string[];
+  scannedAt: string;
+}
+
+export type HookActionKind = 'import' | 'importAll' | 'saveSource' | 'deleteSource' | 'sync' | 'remove';
+
+export interface HookActionRequest {
+  action: HookActionKind;
+  event?: string;
+  agent?: string;
+  agents?: string[];
+  /** saveSource: event arrays keyed by agent (claude / codex). */
+  definitions?: Record<string, unknown[]>;
+  /** importAll conflict preference (defaults to claude). */
+  prefer?: string;
+}
+
+export interface HookActionResponse {
+  message: string;
+  snapshotIds: string[];
+  warnings: string[];
+  report: HookMatrixReport;
+}
+

@@ -1,6 +1,9 @@
 import type {
   ConfigReport,
   HealthResponse,
+  HookActionRequest,
+  HookActionResponse,
+  HookMatrixReport,
   MatrixResponse,
   McpActionRequest,
   McpActionResponse,
@@ -82,6 +85,8 @@ export const api = {
   config: (signal?: AbortSignal) => request<ConfigReport>('/api/config', { signal }),
   mcp: (signal?: AbortSignal) => request<McpMatrixReport>('/api/mcp', { signal }),
   mcpAction: (body: McpActionRequest) => request<McpActionResponse>('/api/mcp', post(body)),
+  hooks: (signal?: AbortSignal) => request<HookMatrixReport>('/api/hooks', { signal }),
+  hookAction: (body: HookActionRequest) => request<HookActionResponse>('/api/hooks', post(body)),
   snapshots: (signal?: AbortSignal) => request<SnapshotManifest[]>('/api/snapshots', { signal }),
   restore: (id: string) => request<RestoreResponse>('/api/snapshots/restore', post({ id })),
   open: (path: string) => request<OpenResponse>('/api/open', post({ path })),
