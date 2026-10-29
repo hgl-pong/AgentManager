@@ -8,6 +8,7 @@ import type {
   PromptState,
   SettingsReport,
 } from '../../shared/types.ts';
+import { McpView } from './views/McpView.tsx';
 import { PromptsView } from './views/PromptsView.tsx';
 import type { PromptsHandle } from './views/PromptsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
@@ -23,6 +24,12 @@ const TABS = [
     label: 'skills',
     title: 'skills',
     lede: '查看每个 skill 在 Claude Code、Codex、pi 中的链接状态。',
+  },
+  {
+    key: 'mcp',
+    label: 'MCP',
+    title: 'MCP',
+    lede: '统一维护 MCP server 源，并同步到 Claude Code、Codex 与 pi。',
   },
   {
     key: 'prompts',
@@ -375,6 +382,7 @@ export default function App() {
           {notice && <p className="notice">{notice}</p>}
 
           {tab === 'skills' && <SkillsView version={dataVersion} onChanged={changed} />}
+          {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
           {tab === 'prompts' && (
             <PromptsView
               version={dataVersion}

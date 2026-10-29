@@ -2536,3 +2536,229 @@ tbody td {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- MCP matrix ---------- */
+
+.mcpm-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mcpm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.mcpm-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcpm-head-copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mcpm-head-actions,
+.mcpm-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.mcpm-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.mcpm-synced {
+  color: var(--success);
+}
+
+.mcpm-drift,
+.mcpm-orphan {
+  color: var(--warning);
+}
+
+.mcpm-missing {
+  color: var(--text-dim);
+}
+
+.mcpm-invalid {
+  color: var(--danger);
+}
+
+.mcpm-unsupported {
+  color: var(--info);
+}
+
+.mcpm-legend li {
+  color: var(--text-muted);
+}
+
+.mcpm-legend .mcpm-dot {
+  margin-right: 2px;
+}
+
+.mcpm-table thead th:not(:first-child) {
+  width: auto;
+  min-width: 120px;
+}
+
+.mcpm-table td {
+  text-align: center;
+  vertical-align: top;
+}
+
+.mcpm-cell.mcpm-invalid {
+  background: var(--danger-soft);
+}
+
+.mcpm-cell.mcpm-drift {
+  background: var(--warning-soft);
+}
+
+.mcpm-state {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mcpm-source {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.mcpm-source.in {
+  color: var(--text);
+}
+
+.mcpm-summary {
+  display: block;
+  max-width: 200px;
+  margin: 2px auto 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcpm-cell-error {
+  display: block;
+  max-width: 220px;
+  margin: 3px auto 0;
+  color: var(--danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.mcpm-unsupported .mcpm-cell-error {
+  color: var(--info);
+}
+
+.mcpm-row-actions .cell-actions {
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+
+.mcpm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.mcpm-empty p {
+  margin: 0;
+}
+
+.mcpm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.mcpm-form .panel-head p {
+  margin: 2px 0 0;
+}
+
+.mcpm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.mcpm-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.mcpm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.mcpm-field .control[readonly] {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.mcpm-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.mcpm-sync legend {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.toast-warning {
+  border-left-color: var(--warning);
+}
+
+@media (max-width: 600px) {
+  .mcpm-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mcpm-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

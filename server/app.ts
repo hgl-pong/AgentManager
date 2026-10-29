@@ -7,6 +7,7 @@ import { extname, join, resolve } from 'node:path';
 import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
 import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
+import { buildMcpReport, runMcpAction } from './mcp.ts';
 import { getModelsReport } from './models.ts';
 import { isInside, scanMatrix } from './scan.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
@@ -18,6 +19,7 @@ import type {
   AgentSpec,
   ConfigFileSpec,
   MatrixResponse,
+  McpActionRequest,
   PromptActionRequest,
   PromptTargetSpec,
   SettingsFileDescriptor,
@@ -55,6 +57,8 @@ export interface AppConfig {
   promptTargets: PromptTargetSpec[];
   configFiles: ConfigFileSpec[];
   settingsFiles: SettingsFileDescriptor[];
+  /** Single MCP source: <home>/.agents/mcp/servers.json. */
+  mcpSource: string;
   openable: Set<string>;
 }
 
@@ -138,6 +142,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
   ];
 
   const settingsFiles = createSettingsRegistry({ home });
+  const mcpSource = join(home, '.agents', 'mcp', 'servers.json');
 
   const openable = new Set(
     [
@@ -148,6 +153,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
       ]),
       promptSource,
       ...promptTargets.map((target) => target.path),
+      mcpSource,
     ].map((path) => path.toLowerCase()),
   );
 
@@ -166,6 +172,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     promptTargets,
     configFiles,
     settingsFiles,
+    mcpSource,
     openable,
   };
 }
@@ -218,6 +225,7 @@ function restoreRoots(config: AppConfig): string[] {
     config.promptSource,
     ...config.promptTargets.map((target) => target.path),
     ...config.settingsFiles.map((file) => file.hostPath ?? file.path),
+    config.mcpSource,
   ];
 }
 
@@ -347,6 +355,10 @@ function openWithSystem(path: string): void {
         ? (['open', [path]] as const)
         : (['xdg-open', [path]] as const);
   spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+function mcpInput(config: AppConfig) {
+  return { sourcePath: config.mcpSource, snapshotRoot: config.snapshotRoot, settingsFiles: config.settingsFiles };
 }
 
 function promptInput(config: AppConfig) {
@@ -481,6 +493,18 @@ async function handleRequest(
         request: body as unknown as SettingsSaveRequest,
       }),
     );
+    json(response, 200, result);
+    return;
+  }
+
+  if (pathname === '/api/mcp' && request.method === 'GET') {
+    json(response, 200, buildMcpReport(mcpInput(config)));
+    return;
+  }
+
+  if (pathname === '/api/mcp' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as McpActionRequest;
+    const result = await writes.run(() => runMcpAction(mcpInput(config), body));
     json(response, 200, result);
     return;
   }

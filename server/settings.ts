@@ -405,7 +405,7 @@ function cleanup(path: string): void {
  * Writes a sibling temp file and renames it over the target, retrying the Windows cases where an
  * editor or antivirus briefly holds the destination (EPERM/EBUSY). A failed attempt cleans up.
  */
-function writeAtomically(path: string, text: string): void {
+export function writeAtomically(path: string, text: string): void {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true });
 

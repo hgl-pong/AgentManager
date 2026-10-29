@@ -360,3 +360,75 @@ export interface ModelsReport {
   models: ModelInfo[];
 }
 
+// ---- MCP management ----
+
+export type McpTransport = 'stdio' | 'http' | 'sse';
+
+/** The agent-neutral shape stored in ~/.agents/mcp/servers.json. */
+export interface McpServerDefinition {
+  transport: McpTransport;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
+}
+
+export type McpState = 'synced' | 'drift' | 'missing' | 'orphan' | 'invalid' | 'unsupported';
+
+export interface McpAgentInfo {
+  key: string;
+  label: string;
+  file: string;
+  format: SettingsFormat;
+}
+
+export interface McpMatrixCell {
+  state: McpState;
+  summary?: string;
+  error?: string;
+}
+
+export interface McpMatrixRow {
+  name: string;
+  inSource: boolean;
+  source?: McpServerDefinition;
+  cells: Record<string, McpMatrixCell>;
+}
+
+export interface McpMatrixReport {
+  source: {
+    path: string;
+    exists: boolean;
+    bytes?: number;
+    error?: string;
+    serverCount: number;
+  };
+  agents: McpAgentInfo[];
+  rows: McpMatrixRow[];
+  scannedAt: string;
+}
+
+export type McpActionKind = 'import' | 'importAll' | 'saveSource' | 'deleteSource' | 'sync' | 'remove';
+
+export interface McpActionRequest {
+  action: McpActionKind;
+  name?: string;
+  /** Single-agent actions: import / sync / remove. */
+  agent?: string;
+  /** sync: targets; saveSource: agents to sync after saving. */
+  agents?: string[];
+  /** saveSource payload. */
+  server?: McpServerDefinition;
+  /** importAll conflict preference (defaults to claude). */
+  prefer?: string;
+}
+
+export interface McpActionResponse {
+  message: string;
+  snapshotIds: string[];
+  warnings: string[];
+  report: McpMatrixReport;
+}
+
