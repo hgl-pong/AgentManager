@@ -184,23 +184,39 @@ export function initPrompts(input: PromptActionInput): PromptActionReport {
 /** Reads the canonical prompt text for the in-browser editor. Never writes. */
 export function readPromptSource(source: string): PromptSourceContent {
   const content = readOrNull(source);
+  const text = content ?? '';
   return {
     path: source,
     exists: content !== null,
-    content: content ?? '',
+    content: text,
     bytes: content === null ? 0 : Buffer.byteLength(content),
+    // Absent files share one sentinel so "still absent" keeps matching.
+    etag: content === null ? 'missing' : hashText(text),
   };
 }
 
 /**
  * Saves the canonical prompt in place. Writing in place (instead of rename) is required:
  * a rename would give the source a new inode and silently detach every hard-linked target.
+ *
+ * `expectedEtag` is the optimistic lock the editor read alongside its draft: when the file changed
+ * on disk since then the write is refused with 409 instead of silently discarding that edit.
  */
-export function savePromptSource(input: PromptActionInput, content: string): PromptSaveReport {
+export function savePromptSource(
+  input: PromptActionInput,
+  content: string,
+  expectedEtag?: string,
+): PromptSaveReport {
   if (Buffer.byteLength(content) > 1_000_000) throw new AppError(400, '提示词内容超过 1MB 上限');
 
   const stat = lstatOrNull(input.source);
   if (stat?.isSymbolicLink()) throw new AppError(409, '源文件是符号链接，为避免写到链接目标，拒绝保存');
+  if (expectedEtag !== undefined) {
+    const current = readPromptSource(input.source);
+    if (current.etag !== expectedEtag) {
+      throw new AppError(409, `${input.source} 已被外部修改，请先载入磁盘上的版本再保存`);
+    }
+  }
 
   const snapshot = createSnapshot(
     input.snapshotRoot,

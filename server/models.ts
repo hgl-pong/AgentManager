@@ -61,7 +61,23 @@ function rawList(payload: unknown): unknown[] {
   return [];
 }
 
-/** Normalizes OpenAI-style `{data:[...]}` and Codex-style `{models:[...]}` payloads. */
+/** Reads a list of effort names from fields like `supported_efforts: ["high"]`. */
+function effortList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+const EFFORT_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function orderEfforts(levels: string[]): string[] {
+  const unique = [...new Set(levels)];
+  const known = EFFORT_ORDER.filter((level) => unique.includes(level));
+  return [...known, ...unique.filter((level) => !EFFORT_ORDER.includes(level))];
+}
+
+/**
+ * Normalizes OpenAI-style `{data:[...]}`, Codex-style `{models:[...]}` and the extended shape the
+ * local gateway returns (`context_length`, `reasoning.supportsReasoning`, `supported_efforts`, ...).
+ */
 export function normalizeModels(payload: unknown): ModelInfo[] {
   const models = new Map<string, ModelInfo>();
   for (const raw of rawList(payload)) {
@@ -71,41 +87,71 @@ export function normalizeModels(payload: unknown): ModelInfo[] {
     if (!id) continue;
     const capabilities = (record.capabilities ?? {}) as Record<string, unknown>;
     const compat = (record.compat ?? {}) as Record<string, unknown>;
+    const reasoning = (record.reasoning ?? {}) as Record<string, unknown>;
     const contextWindow =
-      asNumber(record.max_input_tokens) ?? asNumber(record.context_window) ?? asNumber(record.contextWindow);
+      asNumber(record.max_input_tokens) ??
+      asNumber(record.context_length) ??
+      asNumber(record.context_window) ??
+      asNumber(record.contextWindow);
     const maxOutputTokens =
-      asNumber(record.max_tokens) ?? asNumber(record.max_output_tokens) ?? asNumber(record.maxOutputTokens);
+      asNumber(record.max_tokens) ??
+      asNumber(record.max_output_tokens) ??
+      asNumber(record.maxOutputTokens);
     const input = Array.isArray(record.input) ? record.input.map(String) : [];
-    const slash = id.indexOf('/');
-    models.set(id, {
-      id,
-      name: typeof record.display_name === 'string' ? record.display_name : typeof record.name === 'string' ? record.name : id,
-      group: slash > 0 ? id.slice(0, slash) : 'default',
-      ...(contextWindow === undefined ? {} : { contextWindow }),
-      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-      thinking:
-        capabilityFlag(capabilities.thinking) ??
-        capabilityFlag(record.thinking) ??
-        record.reasoning === true,
-      effort:
-        capabilityFlag(capabilities.effort) ??
-        capabilityFlag(compat.supportsReasoningEffort) ??
-        capabilityFlag(record.supports_reasoning_effort) ??
-        false,
-      effortLevels: (() => {
-        const raw =
-          capabilities.effort ??
+    const inputModalities = Array.isArray(record.input_modalities)
+      ? record.input_modalities.map(String)
+      : Array.isArray(record.modalities)
+        ? record.modalities.map(String)
+        : [];
+    const effortLevels = orderEfforts([
+      ...effortList(record.supported_efforts),
+      ...effortList(reasoning.supportedEfforts),
+      ...(supportedEffortLevels(
+        capabilities.effort ??
           (compat.supportsReasoningEffort && typeof compat.supportsReasoningEffort === 'object'
             ? compat.supportsReasoningEffort
             : undefined) ??
           (record.supports_reasoning_effort && typeof record.supports_reasoning_effort === 'object'
             ? record.supports_reasoning_effort
-            : undefined);
-        const levels = supportedEffortLevels(raw);
-        return levels.length ? levels : undefined;
-      })(),
-      imageInput: capabilityFlag(capabilities.image_input) ?? input.includes('image'),
-      pdfInput: capabilityFlag(capabilities.pdf_input) ?? input.includes('pdf'),
+            : undefined),
+      ) ?? []),
+    ]);
+    const thinking =
+      capabilityFlag(capabilities.thinking) ??
+      capabilityFlag(record.thinking) ??
+      capabilityFlag(reasoning.supportsReasoning) ??
+      record.reasoning === true;
+    const effort =
+      effortLevels.length > 0 ||
+      (capabilityFlag(capabilities.effort) ??
+        capabilityFlag(compat.supportsReasoningEffort) ??
+        capabilityFlag(record.supports_reasoning_effort) ??
+        false);
+    const slash = id.indexOf('/');
+    models.set(id, {
+      id,
+      name:
+        typeof record.display_name === 'string'
+          ? record.display_name
+          : typeof record.name === 'string'
+            ? record.name
+            : id,
+      group: slash > 0 ? id.slice(0, slash) : 'default',
+      ...(contextWindow === undefined ? {} : { contextWindow }),
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+      thinking,
+      effort,
+      ...(effortLevels.length ? { effortLevels } : {}),
+      imageInput:
+        capabilityFlag(capabilities.image_input) ??
+        capabilityFlag(record.supportsImages) ??
+        capabilityFlag(record.supports_image) ??
+        capabilityFlag(record.vision) ??
+        (input.includes('image') || inputModalities.includes('image')),
+      pdfInput:
+        capabilityFlag(capabilities.pdf_input) ??
+        capabilityFlag(record.supportsPdf) ??
+        (input.includes('pdf') || inputModalities.includes('pdf')),
     });
   }
 

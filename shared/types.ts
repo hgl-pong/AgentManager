@@ -114,10 +114,14 @@ export interface PromptSourceContent {
   exists: boolean;
   content: string;
   bytes: number;
+  /** Optimistic-lock token of the text above; a save must echo it so external edits are caught. */
+  etag: string;
 }
 
 export interface PromptSaveRequest {
   content: string;
+  /** The etag of the content this draft was based on. */
+  etag: string;
 }
 
 export interface PromptSaveReport extends PromptActionReport {

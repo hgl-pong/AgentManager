@@ -55,6 +55,43 @@ test('normalizeModels reads OpenAI and Codex payload shapes', () => {
   assert.equal(codex[0]?.thinking, true);
 });
 
+test('normalizeModels reads the extended gateway shape (context_length, reasoning, supported_efforts)', () => {
+  const models = normalizeModels({
+    data: [
+      {
+        id: 'hy4-preview',
+        name: 'Hy4 preview',
+        context_length: 960_000,
+        max_output_tokens: 64_000,
+        reasoning: { supportsReasoning: true, supportedEfforts: ['high', 'low'] },
+        supported_efforts: ['high', 'low', 'medium'],
+        modality: 'text',
+        supportsImages: false,
+        input_modalities: ['text'],
+      },
+      {
+        id: 'vision-model',
+        name: 'Vision',
+        modality: 'multimodal',
+        vision: true,
+        supportsImages: true,
+        input_modalities: ['text', 'image'],
+      },
+    ],
+  });
+
+  assert.equal(models[0]?.name, 'Hy4 preview');
+  assert.equal(models[0]?.contextWindow, 960_000);
+  assert.equal(models[0]?.maxOutputTokens, 64_000);
+  assert.equal(models[0]?.thinking, true);
+  assert.equal(models[0]?.effort, true);
+  assert.deepEqual(models[0]?.effortLevels, ['low', 'medium', 'high']);
+  assert.equal(models[0]?.imageInput, false);
+
+  assert.equal(models[1]?.imageInput, true);
+  assert.equal(models[1]?.effort, false);
+});
+
 test('getModelsReport caches, refreshes and falls back to stale data', async () => {
   process.env.AGENT_MANAGER_MODELS_URL = 'http://models.test/v1';
   let calls = 0;

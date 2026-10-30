@@ -16,14 +16,15 @@ import { SettingsView } from './views/SettingsView.tsx';
 import type { SettingsHandle } from './views/SettingsView.tsx';
 import { SkillsView } from './views/SkillsView.tsx';
 import { SnapshotsPanel } from './views/SnapshotsPanel.tsx';
+import { useConfirmDialog } from './lib/confirm.tsx';
 import { THEME_OPTIONS, applyTheme, loadTheme, rememberTheme } from './lib/theme.ts';
 import type { ThemeMode } from './lib/theme.ts';
 
 const TABS = [
   {
     key: 'skills',
-    label: 'skills',
-    title: 'skills',
+    label: 'Skills',
+    title: 'Skills',
     lede: '查看每个 skill 在 Claude Code、Codex、pi 中的链接状态。',
   },
   {
@@ -98,6 +99,7 @@ export default function App() {
   const settingsHandle = useRef<SettingsHandle | null>(null);
   const metaSeq = useRef(0);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
 
   useEffect(() => {
     workspaceRef.current?.scrollTo({ top: 0 });
@@ -127,7 +129,7 @@ export default function App() {
     else if (!isAbortError(promptsResult.reason)) errors.push(`提示词摘要：${errorMessage(promptsResult.reason)}`);
 
     if (matrixResult.status === 'fulfilled') setMatrixReport(matrixResult.value);
-    else if (!isAbortError(matrixResult.reason)) errors.push(`skills 摘要：${errorMessage(matrixResult.reason)}`);
+    else if (!isAbortError(matrixResult.reason)) errors.push(`Skills 摘要：${errorMessage(matrixResult.reason)}`);
 
     if (settingsResult.status === 'fulfilled') setSettingsReport(settingsResult.value);
     else if (!isAbortError(settingsResult.reason)) errors.push(`设置摘要：${errorMessage(settingsResult.reason)}`);
@@ -152,19 +154,23 @@ export default function App() {
       if (tab === 'prompts' && promptsDirty.current) dirty.push('提示词');
       if (tab === 'settings' && settingsDirty.current) dirty.push('设置');
       if (dirty.length > 0) {
-        const discard = window.confirm(
-          `${dirty.join('、')}有未保存的修改。切换页面会放弃这些修改，继续吗？`,
-        );
-        if (!discard) {
-          window.location.hash = tab;
-          return;
-        }
+        const description = `${dirty.join('、')}有未保存的修改，切换页面会放弃这些修改。`;
+        void ask({
+          title: '切换页面',
+          message: description,
+          confirmLabel: '放弃并切换',
+          danger: true,
+        }).then((discard) => {
+          if (discard) setTab(next);
+          else window.location.hash = tab;
+        });
+        return;
       }
       setTab(next);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, [tab]);
+  }, [ask, tab]);
 
   const agents = useMemo<AgentStatus[]>(() => {
     const keys = new Set(['claude', 'codex', 'pi']);
@@ -215,11 +221,14 @@ export default function App() {
     window.location.hash = key;
   }
 
-  function rescan() {
+  async function rescan() {
     if (anyDirty()) {
-      const discard = window.confirm(
-        '当前页面有未保存的修改。重新扫描会放弃这些修改并重新读取磁盘，继续吗？',
-      );
+      const discard = await ask({
+        title: '重新扫描',
+        message: '当前页面有未保存的修改，重新扫描会放弃这些修改并重新读取磁盘。',
+        confirmLabel: '放弃并重新扫描',
+        danger: true,
+      });
       if (!discard) return;
       promptsHandle.current?.discardAndReload();
       settingsHandle.current?.discardAll();
@@ -258,13 +267,16 @@ export default function App() {
   }
 
   async function quit() {
-    if (anyDirty()) {
-      const discard = window.confirm(
-        '当前页面有未保存的修改。退出会丢失这些修改，仍然退出吗？',
-      );
-      if (!discard) return;
-    }
-    if (!window.confirm('退出 AgentManager？后台服务会一并停止。')) return;
+    const dirty = anyDirty();
+    const proceed = await ask({
+      title: '退出 AgentManager',
+      message: dirty
+        ? '后台服务会一并停止，当前页面未保存的修改会丢失。'
+        : '后台服务会一并停止，之后可以再次双击 AgentManager.exe 启动。',
+      confirmLabel: '退出',
+      danger: true,
+    });
+    if (!proceed) return;
     setQuitting(true);
     setNotice(null);
     try {
@@ -373,7 +385,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button type="button" className="primary rescan" onClick={rescan}>
+            <button type="button" className="primary rescan" onClick={() => void rescan()}>
               重新扫描
             </button>
           </div>
@@ -411,6 +423,7 @@ export default function App() {
           <SnapshotsPanel version={snapshotVersion} onRestored={restored} />
         </main>
       </div>
+      {confirmNode}
     </div>
   );
 }

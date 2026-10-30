@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { HttpError, api, errorMessage, isAbortError } from '../api.ts';
+import { isConfirmOpen, useConfirmDialog } from '../lib/confirm.tsx';
 import type {
   ModelInfo,
   ModelsReport,
@@ -19,6 +20,7 @@ import {
   type FieldApi,
 } from '../components/FieldEditor.tsx';
 import { McpEditor } from '../components/McpEditor.tsx';
+import { ModelPicker } from '../components/ModelPicker.tsx';
 import { RawEditor } from '../components/RawEditor.tsx';
 import {
   asObject,
@@ -94,18 +96,6 @@ function formatTokens(value: number | undefined): string {
 
 function compactPath(value: string): string {
   return value.replace(/^[A-Za-z]:\\Users\\[^\\]+\\(?=\.)/i, '~\\');
-}
-
-function modelMeta(model: ModelInfo | undefined): string {
-  if (!model) return '';
-  const parts: string[] = [];
-  if (model.contextWindow) parts.push(`上下文 ${formatTokens(model.contextWindow)}`);
-  if (model.maxOutputTokens) parts.push(`输出 ${formatTokens(model.maxOutputTokens)}`);
-  if (model.thinking) parts.push('thinking');
-  if (model.effort) parts.push('effort');
-  if (model.imageInput) parts.push('图片');
-  if (model.pdfInput) parts.push('PDF');
-  return parts.join(' · ');
 }
 
 interface ModelTarget {
@@ -318,6 +308,7 @@ export function SettingsView({
   const [navError, setNavError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [models, setModels] = useState<ModelsReport | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState('');
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsSourceInput, setModelsSourceInput] = useState(() => {
     try {
@@ -336,6 +327,7 @@ export function SettingsView({
   const toastTimer = useRef<number | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const conflictRef = useRef<HTMLDivElement | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
 
   const showToast = useCallback((kind: 'success' | 'error', text: string) => {
     if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current);
@@ -390,6 +382,8 @@ export function SettingsView({
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
+        // A confirmation owns the keyboard while it is open; saving behind it would re-enter it.
+        if (isConfirmOpen()) return;
         void saveAll();
       }
     };
@@ -663,15 +657,15 @@ export function SettingsView({
     setActionError(null);
   }
 
-  function chooseAgent(key: string) {
+  async function chooseAgent(key: string) {
     if (!agent || key === agent.key) return;
-    if (
-      dirtyCount > 0 &&
-      !window.confirm(
-        `还有 ${dirtyCount} 个文件未保存。切换 agent 会保留这些草稿，但当前表单会切走。继续吗？`,
-      )
-    ) {
-      return;
+    if (dirtyCount > 0) {
+      const proceed = await ask({
+        title: '切换 agent',
+        message: `还有 ${dirtyCount} 个文件没保存。草稿会保留在各自的文件上，但当前表单会切走。`,
+        confirmLabel: '切换',
+      });
+      if (!proceed) return;
     }
     setAgentKey(key);
     setNav({ kind: 'common' });
@@ -740,14 +734,19 @@ export function SettingsView({
   async function overwriteFile(fileId: string) {
     const draft = drafts[fileId];
     if (!draft || busy) return;
-    if (
-      !window.confirm(
-        `「${draft.file.label}」在磁盘上已被外部修改。用当前草稿覆盖会丢失外部的改动，继续吗？`,
-      )
-    ) {
-      return;
-    }
-    if (!window.confirm('再次确认：覆盖后只能从快照还原，不会自动合并。确定覆盖？')) return;
+    const proceed = await ask({
+      title: `用本地草稿覆盖 ${draft.file.label}？`,
+      message: (
+        <>
+          磁盘上的 <code>{draft.file.id}</code> 已被外部修改。
+          <br />
+          覆盖后外部改动会丢失，且不会自动合并，只能从快照还原。
+        </>
+      ),
+      confirmLabel: '覆盖并保存',
+      danger: true,
+    });
+    if (!proceed) return;
 
     setBusy('overwrite');
     setActionError(null);
@@ -789,17 +788,31 @@ export function SettingsView({
 
     const flagChanges = collectFlagChanges(catalog, report, drafts);
     if (flagChanges.managedOnly.length > 0) {
-      const proceed = window.confirm(
-        `以下字段只在组织托管配置中生效，写入用户配置文件通常不会生效：\n\n` +
-          `${flagChanges.managedOnly.join('\n')}\n\n仍要继续保存吗？`,
-      );
+      const proceed = await ask({
+        title: '这些字段只在托管配置里生效',
+        message: (
+          <>
+            写入用户配置文件通常不会起作用：
+            <br />
+            <code>{flagChanges.managedOnly.join('、')}</code>
+          </>
+        ),
+        confirmLabel: '仍然保存',
+      });
       if (!proceed) return;
     }
     if (flagChanges.executable.length > 0) {
-      const proceed = window.confirm(
-        `以下字段会被 agent 当作命令执行（以当前用户身份）：\n\n` +
-          `${flagChanges.executable.join('\n')}\n\n确认保存并允许执行吗？`,
-      );
+      const proceed = await ask({
+        title: '这些字段会被当作命令执行',
+        message: (
+          <>
+            agent 会以当前用户身份执行：
+            <br />
+            <code>{flagChanges.executable.join('、')}</code>
+          </>
+        ),
+        confirmLabel: '保存并允许执行',
+      });
       if (!proceed) return;
     }
 
@@ -847,9 +860,15 @@ export function SettingsView({
     }
   }
 
-  function discardAll() {
+  async function discardAll() {
     if (dirtyCount === 0) return;
-    if (!window.confirm(`放弃 ${dirtyCount} 个文件的未保存修改？`)) return;
+    const proceed = await ask({
+      title: '放弃未保存的修改？',
+      message: `${dirtyCount} 个文件会回到磁盘上当前的版本，本地草稿直接丢掉。`,
+      confirmLabel: '放弃修改',
+      danger: true,
+    });
+    if (!proceed) return;
     resetAllDrafts();
     showToast('success', '已放弃未保存修改。');
   }
@@ -1120,56 +1139,88 @@ export function SettingsView({
     setValue(target.file.id, target.path, value.trim() === '' ? undefined : value.trim());
   }
 
-  function renderModelDatalist(agentKey: string) {
-    const groups = new Map<string, ModelInfo[]>();
-    for (const model of models?.models ?? []) {
-      const list = groups.get(model.group) ?? [];
-      list.push(model);
-      groups.set(model.group, list);
-    }
-    return (
-      <datalist id={`model-list-${agentKey}`}>
-        {[...groups.entries()].map(([group, list]) => (
-          <optgroup key={group} label={group === 'default' ? '默认' : group}>
-            {list.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-                {model.contextWindow ? ` · ${formatTokens(model.contextWindow)}` : ''}
-                {model.thinking ? ' · thinking' : ''}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </datalist>
-    );
-  }
-
   function renderModelsContent() {
     const targets = ['claude', 'codex', 'pi']
       .map((key) => modelTargetFor(key))
       .filter((target): target is ModelTarget => target !== null);
+    const list = models?.models ?? [];
+    const needle = catalogQuery.trim().toLowerCase();
+    const catalogModels =
+      needle === ''
+        ? list
+        : list.filter((model) => `${model.id} ${model.name} ${model.group}`.toLowerCase().includes(needle));
+    const unused = targets.filter((target) => list.length > 0 && !list.some((model) => model.id === target.value));
+
     return (
       <div className="settings-panel models-panel">
-        <header className="models-head">
-          <div>
-            <h2>模型</h2>
-            <p className="meta">
-              从本地 OpenAI 兼容端点读取模型列表，选择后写入各 agent 的配置文件；点底部「保存全部」生效。
-            </p>
-          </div>
-          <button type="button" onClick={() => void loadModels(true, modelsSourceInput)} disabled={modelsLoading}>
-            {modelsLoading ? '刷新中…' : '刷新模型'}
-          </button>
-        </header>
+        <section className="models-section">
+          <header className="models-section-head">
+            <div>
+              <h3>当前选择</h3>
+              <p className="meta">每个 agent 使用哪个模型。改完点底部「保存全部」写入配置文件。</p>
+            </div>
+          </header>
 
-        <div className="models-source-row">
-          <label className="models-source-label">
-            模型源 URL
+          <div className="model-cards">
+            {targets.map((target) => (
+              <article className="model-card" key={target.agentKey}>
+                <header className="model-card-head">
+                  <div className="model-card-title">
+                    <strong>{target.agentLabel}</strong>
+                    <span className="model-card-target">
+                      <code title={target.file.path}>{compactPath(target.file.path)}</code>
+                      <span className="meta">{target.label}</span>
+                    </span>
+                  </div>
+                  {target.secondary && <span className="model-card-secondary">{target.secondary}</span>}
+                </header>
+
+                <ModelPicker
+                  label={`${target.agentLabel} 模型`}
+                  models={list}
+                  value={target.value}
+                  placeholder="未设置 · 使用 agent 默认值"
+                  disabled={busy !== null}
+                  onChange={(value) => applyModel(target, value)}
+                />
+
+                {target.note && <p className="model-card-note">{target.note}</p>}
+              </article>
+            ))}
+            {targets.length === 0 && <p className="muted">没有可写入的模型位置。</p>}
+          </div>
+        </section>
+
+        <section className="models-section">
+          <header className="models-section-head">
+            <div>
+              <h3>模型源</h3>
+              <p className="meta">
+                从本地 OpenAI 兼容端点读取模型清单。可填 base URL 或完整的 <code>/models</code> 地址。
+              </p>
+            </div>
+            <div className="models-section-actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void loadModels(true, modelsSourceInput)}
+                disabled={modelsLoading || modelsSourceInput.trim() === ''}
+              >
+                {modelsLoading ? '读取中…' : '读取模型'}
+              </button>
+              <button type="button" onClick={() => void loadModels(true, modelsSourceInput)} disabled={modelsLoading}>
+                {modelsLoading ? '刷新中…' : '刷新'}
+              </button>
+            </div>
+          </header>
+
+          <div className="models-source-row">
             <input
               className="control"
               type="url"
               value={modelsSourceInput}
               placeholder="http://127.0.0.1:15721/v1"
+              aria-label="模型源 URL"
               spellCheck={false}
               autoComplete="off"
               disabled={modelsLoading}
@@ -1181,109 +1232,76 @@ export function SettingsView({
                 }
               }}
             />
-          </label>
-          <button
-            type="button"
-            onClick={() => void loadModels(true, modelsSourceInput)}
-            disabled={modelsLoading || modelsSourceInput.trim() === ''}
-          >
-            {modelsLoading ? '读取中…' : '读取模型'}
-          </button>
-        </div>
-        <p className="meta">
-          来源 <code>{models?.source || '正在读取…'}</code>
-          {models?.fetchedAt ? ` · 更新于 ${new Date(models.fetchedAt).toLocaleTimeString()}` : ''}
-          {models?.cached ? ' · 缓存' : ''}
-          {models?.stale ? ' · 端点不可用，显示上次结果' : ''}
-        </p>
-        {models?.error && (
-          <p className="error">模型列表读取失败：{models.error}；仍可手动输入模型 ID。</p>
-        )}
-        {modelsLoading && !models && <p className="muted">读取模型列表…</p>}
+          </div>
 
-        <div className="table-wrap model-table-wrap">
-          <table className="model-table">
-            <thead>
-              <tr>
-                <th scope="col">agent</th>
-                <th scope="col">模型</th>
-                <th scope="col">写入位置</th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.map((target) => {
-                const selected = models?.models.find((model) => model.id === target.value);
-                const custom =
-                  target.value !== '' && !selected && (models?.models.length ?? 0) > 0;
-                return (
-                  <tr key={target.agentKey}>
-                    <th scope="row">
-                      <span className="model-agent">{target.agentLabel}</span>
-                      <span className="meta">{target.file.format.toUpperCase()}</span>
-                    </th>
-                    <td>
-                      <input
-                        className="control"
-                        list={`model-list-${target.agentKey}`}
-                        value={target.value}
-                        placeholder="选择或输入模型 ID"
-                        spellCheck={false}
-                        autoComplete="off"
-                        aria-label={`${target.agentLabel} 模型`}
-                        onChange={(event) => applyModel(target, event.target.value)}
-                      />
-                      {renderModelDatalist(target.agentKey)}
-                      <div className="model-notes">
-                        {selected && <span className="model-meta">{modelMeta(selected)}</span>}
-                        {custom && <span className="hint">当前值不在模型列表中，仍会按原样保存。</span>}
-                        {target.secondary && <span className="hint">{target.secondary}</span>}
-                      </div>
-                    </td>
-                    <td className="model-source">
-                      <code title={target.file.path}>{compactPath(target.file.path)}</code>
-                      <span className="meta">{target.label}</span>
-                      {target.note && <span className="hint">{target.note}</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="hint">
-          可直接在上方填写模型源 URL（base URL 或完整的 <code>/models</code> 地址）；留空时使用环境变量
-          <code>AGENT_MANAGER_MODELS_URL</code> 或默认 <code>http://127.0.0.1:15721/v1</code>。
-        </p>
+          <p className="models-status">
+            <span>
+              来源 <code>{models?.source || '正在读取…'}</code>
+            </span>
+            <span className="meta">{list.length} 个模型</span>
+            {models?.fetchedAt && <span className="meta">更新于 {new Date(models.fetchedAt).toLocaleTimeString()}</span>}
+            {models?.cached && <span className="meta">缓存</span>}
+            {models?.stale && <span className="meta">端点不可用，显示上次结果</span>}
+          </p>
+          {models?.error && (
+            <p className="error">模型列表读取失败：{models.error}；仍可在选择器里输入自定义 ID。</p>
+          )}
+          {modelsLoading && !models && <p className="muted">读取模型列表…</p>}
+          {unused.length > 0 && (
+            <p className="hint">
+              {unused.map((target) => `${target.agentLabel}「${target.value}」`).join('、')}
+              不在当前模型源里，仍会按原样写入。
+            </p>
+          )}
+        </section>
 
-        <section className="models-catalog">
-          <header className="models-catalog-head">
-            <h3>模型列表</h3>
-            <span className="meta">{models?.models.length ?? 0} 个模型</span>
+        <section className="models-section">
+          <header className="models-section-head">
+            <div>
+              <h3>模型清单</h3>
+              <p className="meta">端点上能用的全部模型，以及它们声明的能力。</p>
+            </div>
+            <div className="models-section-actions">
+              <input
+                className="control models-catalog-search"
+                type="search"
+                value={catalogQuery}
+                placeholder="筛选 ID、名称或分组"
+                aria-label="筛选模型清单"
+                spellCheck={false}
+                onChange={(event) => setCatalogQuery(event.target.value)}
+              />
+              <span className="meta">
+                {catalogModels.length === list.length
+                  ? `${list.length} 个`
+                  : `${catalogModels.length} / ${list.length} 个`}
+              </span>
+            </div>
           </header>
-          {models?.models.length ? (
-            <div className="table-wrap">
-              <table className="model-catalog-table">
-                <colgroup>
-                  <col className="col-id" />
-                  <col className="col-group" />
-                  <col className="col-num" />
-                  <col className="col-num" />
-                  <col className="col-effort" />
-                  <col className="col-caps" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th scope="col">ID / 名称</th>
-                    <th scope="col">分组</th>
-                    <th scope="col">上下文</th>
-                    <th scope="col">输出</th>
-                    <th scope="col">推理强度</th>
-                    <th scope="col">其他能力</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {models.models.map((model) => {
-                    return (
+          {list.length > 0 ? (
+            <div className="models-catalog-scroll">
+              <div className="table-wrap">
+                <table className="model-catalog-table">
+                  <colgroup>
+                    <col className="col-id" />
+                    <col className="col-group" />
+                    <col className="col-num" />
+                    <col className="col-num" />
+                    <col className="col-effort" />
+                    <col className="col-caps" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">ID / 名称</th>
+                      <th scope="col">分组</th>
+                      <th scope="col">上下文</th>
+                      <th scope="col">输出</th>
+                      <th scope="col">推理强度</th>
+                      <th scope="col">其他能力</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catalogModels.map((model) => (
                       <tr key={model.id} className="model-catalog-row">
                         <td className="model-catalog-id">
                           <code>{model.id}</code>
@@ -1297,27 +1315,42 @@ export function SettingsView({
                         <td className="model-catalog-num">{formatTokens(model.contextWindow) || '—'}</td>
                         <td className="model-catalog-num">{formatTokens(model.maxOutputTokens) || '—'}</td>
                         <td className="model-catalog-effort">
-                          {model.effort && model.effortLevels?.length
-                            ? model.effortLevels.map((level) => (
-                                <span key={level} className="model-cap model-cap--effort">{level}</span>
+                          <div className="model-cap-row">
+                            {model.effort && model.effortLevels?.length ? (
+                              model.effortLevels.map((level) => (
+                                <span key={level} className="model-cap model-cap--effort">
+                                  {level}
+                                </span>
                               ))
-                            : model.effort
-                              ? <span className="model-cap model-cap--effort">effort</span>
-                              : <span className="model-cap model-cap--none">—</span>}
+                            ) : model.effort ? (
+                              <span className="model-cap model-cap--effort">effort</span>
+                            ) : (
+                              <span className="model-cap model-cap--none">—</span>
+                            )}
+                          </div>
                         </td>
                         <td className="model-catalog-caps">
-                          {model.thinking && <span className="model-cap model-cap--thinking">thinking</span>}
-                          {model.imageInput && <span className="model-cap model-cap--image">图片</span>}
-                          {model.pdfInput && <span className="model-cap model-cap--pdf">PDF</span>}
-                          {!model.thinking && !model.imageInput && !model.pdfInput && (
-                            <span className="model-cap model-cap--none">—</span>
-                          )}
+                          <div className="model-cap-row">
+                            {model.thinking && <span className="model-cap model-cap--thinking">thinking</span>}
+                            {model.imageInput && <span className="model-cap model-cap--image">图片</span>}
+                            {model.pdfInput && <span className="model-cap model-cap--pdf">PDF</span>}
+                            {!model.thinking && !model.imageInput && !model.pdfInput && (
+                              <span className="model-cap model-cap--none">—</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                    {catalogModels.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          没有匹配的模型。
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <p className="muted">暂无模型数据，填写模型源 URL 后点「读取模型」。</p>
@@ -1555,7 +1588,7 @@ export function SettingsView({
               aria-selected={selected}
               aria-controls="settings-panel-body"
               className={selected ? 'agent-tab is-active' : 'agent-tab'}
-              onClick={() => chooseAgent(entry.key)}
+              onClick={() => void chooseAgent(entry.key)}
             >
               <span className="agent-name">{entry.label}</span>
               <span className="agent-meta">
@@ -1740,7 +1773,7 @@ export function SettingsView({
               type="button"
               className="secondary"
               disabled={busy !== null}
-              onClick={discardAll}
+              onClick={() => void discardAll()}
             >
               放弃
             </button>
@@ -1769,6 +1802,7 @@ export function SettingsView({
           </button>
         </div>
       )}
+      {confirmNode}
     </section>
   );
 }

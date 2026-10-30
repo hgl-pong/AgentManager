@@ -298,6 +298,29 @@ test('a restore can be undone through the snapshotId it returns', async () => {
   assert.equal(readFileSync(file, 'utf8'), 'v3');
 });
 
+test('a save with a stale etag is a 409 and leaves the file alone', async () => {
+  await call('/api/prompts', { action: 'init' });
+  const file = join(home, '.agents', 'prompts', 'global.md');
+
+  const before = await call<{ etag: string }>('/api/prompts/content');
+  assert.equal(typeof before.etag, 'string');
+
+  // Another process rewrites the canonical file after this editor read it.
+  writeFileSync(file, 'edited by another process');
+
+  assert.equal(await postStatus('/api/prompts/content', { content: 'my draft', etag: before.etag }), 409);
+  assert.equal(readFileSync(file, 'utf8'), 'edited by another process');
+
+  // Reloading and saving with the current etag goes through.
+  const fresh = await call<{ etag: string }>('/api/prompts/content');
+  const saved = await call<{ content: { content: string } }>('/api/prompts/content', {
+    content: 'my draft',
+    etag: fresh.etag,
+  });
+  assert.equal(saved.content.content, 'my draft');
+  assert.equal(readFileSync(file, 'utf8'), 'my draft');
+});
+
 test('config merges JSON and TOML MCP servers', async () => {
   const report = await call<ConfigReport>('/api/config');
   const shared = report.servers.find((row) => row.name === 'shared');

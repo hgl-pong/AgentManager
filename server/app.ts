@@ -475,7 +475,9 @@ async function handleRequest(
     const body = await readJson(request);
     if (typeof body.content !== 'string') throw new AppError(400, '缺少 content 字段');
     const content = body.content;
-    const result = await writes.run(() => savePromptSource(promptInput(config), content));
+    // Optional so older callers keep working, but the UI always sends the etag of its draft.
+    const etag = typeof body.etag === 'string' ? body.etag : undefined;
+    const result = await writes.run(() => savePromptSource(promptInput(config), content, etag));
     json(response, 200, result);
     return;
   }

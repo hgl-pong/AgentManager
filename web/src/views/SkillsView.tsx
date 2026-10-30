@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
+import { useConfirmDialog } from '../lib/confirm.tsx';
 import type { Cell, CellState, MatrixResponse, Row, SkillActionKind } from '../../../shared/types.ts';
 
 const SHORT: Record<CellState, string> = {
@@ -28,28 +30,113 @@ interface Pending {
   agentLabel: string;
   name: string;
   action: SkillActionKind;
-  label: string;
+  cell: Cell;
+  inSource: boolean;
+  /** Incoming and outbound paths, so a dialog for a not-yet-existing link can still name both ends. */
+  agentRoot: string;
+  sourceRoot: string;
+}
+
+/** Each action names the exact thing that changes on disk, so the dialog never needs a manual. */
+const CONFIRM: Record<SkillActionKind, { title: string; confirm: string; danger: boolean }> = {
+  link: { title: '建立链接', confirm: '建立链接', danger: false },
+  import: { title: '收进源并改链接', confirm: '收进源', danger: false },
+  remove: { title: '删除这个副本', confirm: '删除副本', danger: true },
+  unlink: { title: '移除失效链接', confirm: '移除链接', danger: true },
+};
+
+function pathOf(cell: Cell): string | undefined {
+  return cell.path ?? cell.target;
+}
+
+/** Mirrors the server's own path join: the matrix only carries roots, not per-row paths. */
+function joinPath(root: string, name: string): string {
+  const separator = root.includes('\\') ? '\\' : '/';
+  return `${root.replace(/[\\/]+$/, '')}${separator}${name}`;
+}
+
+function describeAction(pending: Pending): ReactNode {
+  const { name, agentLabel, action, cell, inSource } = pending;
+  const where = pathOf(cell);
+  const path = where ? (
+    <>
+      <br />
+      <code>{where}</code>
+    </>
+  ) : null;
+  // "missing" has no path on disk yet, so derive the spot the link would be created in.
+  const incoming = joinPath(pending.agentRoot, name);
+  const outgoing = joinPath(pending.sourceRoot, name);
+
+  if (action === 'remove') {
+    return (
+      <>
+        将删除 {agentLabel} 目录下的 <code>{name}</code>
+        {path}。
+        <br />
+        {inSource ? (
+          <>源目录里的 <code>{name}</code> 不受影响，删除后这一列变回「缺失」，可再点「建链」。</>
+        ) : (
+          <>这个 skill 不在源目录里，删除后它就不存在了（快照里仍有备份）。</>
+        )}
+      </>
+    );
+  }
+  if (action === 'unlink') {
+    return (
+      <>
+        将移除 {agentLabel} 目录下失效的链接 <code>{name}</code>
+        {path}。链接指向的目录已经不存在，所以不会删除任何 skill 文件。
+      </>
+    );
+  }
+  if (action === 'import') {
+    return (
+      <>
+        将把 {agentLabel} 目录下的独立副本 <code>{name}</code>
+        {path ?? (
+          <>
+            <br />
+            <code>{incoming}</code>
+          </>
+        )}{' '}
+        移动到源目录，再把原位置改成指向源目录的链接。
+        <br />
+        之后所有 agent 共用 <code>{outgoing}</code> 这一份内容，请先确认源目录里没有同名 skill。
+      </>
+    );
+  }
+  return (
+    <>
+      将在 {agentLabel} 目录下创建 <code>{name}</code> 的链接：
+      <br />
+      <code>{incoming}</code>
+      <br />
+      指向 <code>{outgoing}</code>
+      <br />
+      不会覆盖任何已有内容，之后对这个 skill 的修改对所有 agent 同时生效。
+    </>
+  );
 }
 
 function actionsFor(cell: Cell, row: Row): { action: SkillActionKind; label: string }[] {
   if (cell.state === 'missing' && row.inSource) return [{ action: 'link', label: '建链' }];
   if (cell.state === 'broken') return [{ action: 'unlink', label: '移除坏链' }];
-  if (cell.state === 'copy') return [{ action: 'remove', label: '移除副本' }];
+  if (cell.state === 'copy') return [{ action: 'remove', label: '删除副本' }];
   if (cell.state === 'orphan')
     return [
       { action: 'import', label: '收进源' },
-      { action: 'remove', label: '移除副本' },
+      { action: 'remove', label: '删除' },
     ];
   return [];
 }
 
 export function SkillsView({ version, onChanged }: { version: number; onChanged: () => void }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
   const seqRef = useRef(0);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -58,7 +145,6 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
       const next = await api.matrix(signal);
       if (seq !== seqRef.current) return;
       setMatrix(next);
-      setError(null);
       setLoadError(null);
     } catch (reason) {
       if (seq !== seqRef.current || signal?.aborted || isAbortError(reason)) return;
@@ -74,26 +160,25 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
 
   function requestAction(next: Pending) {
     setNotice(null);
-    setPending(next);
-  }
-
-  async function confirm() {
-    if (!pending || busy) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await api.skill({ agent: pending.agent, action: pending.action, name: pending.name });
-      setMatrix(result.matrix);
-      setNotice(`${result.message} · 快照 ${result.snapshotId}`);
-      setPending(null);
-      onChanged();
-    } catch (reason) {
-      setNotice(null);
-      setError(errorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
+    void ask({
+      title: CONFIRM[next.action].title,
+      message: describeAction(next),
+      confirmLabel: CONFIRM[next.action].confirm,
+      danger: CONFIRM[next.action].danger,
+      // The write lives in the dialog, so a failure is reported and retried right where it happened.
+      run: async () => {
+        setBusy(true);
+        setNotice(null);
+        try {
+          const result = await api.skill({ agent: next.agent, action: next.action, name: next.name });
+          setMatrix(result.matrix);
+          setNotice(`${result.message} · 快照 ${result.snapshotId}`);
+          onChanged();
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   }
 
   if (!matrix && loadError) {
@@ -139,23 +224,7 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
         </div>
       )}
       {notice && <p className="notice">{notice}</p>}
-      {error && <p className="error">{error}</p>}
-
-      {pending && (
-        <div className="confirm">
-          <span>
-            对 <b>{pending.agentLabel}</b> 的 <code>{pending.name}</code> 执行「{pending.label}」？写前会自动建快照。
-          </span>
-          <span className="confirm-actions">
-            <button type="button" className="primary" onClick={confirm} disabled={busy}>
-              {busy ? '执行中…' : '确认'}
-            </button>
-            <button type="button" onClick={() => setPending(null)} disabled={busy}>
-              取消
-            </button>
-          </span>
-        </div>
-      )}
+      {confirmNode}
 
       {matrix.agents.length === 0 && <p className="muted">没有配置任何 agent，无法显示 skill 分布。</p>}
       {matrix.rows.length === 0 ? (
@@ -215,7 +284,10 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
                                     agentLabel: agent.label,
                                     name: row.name,
                                     action: entry.action,
-                                    label: entry.label,
+                                    cell,
+                                    inSource: row.inSource,
+                                    agentRoot: agent.root,
+                                    sourceRoot: matrix.source.path,
                                   })
                                 }
                               >

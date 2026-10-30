@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
+import { useConfirmDialog } from '../lib/confirm.tsx';
 import type { SnapshotManifest } from '../../../shared/types.ts';
 
 function formatTime(snapshot: SnapshotManifest): string {
@@ -10,17 +11,12 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
   const [items, setItems] = useState<SnapshotManifest[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [confirming, setConfirming] = useState<SnapshotManifest | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
   const seqRef = useRef(0);
-  const confirmRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (confirming) confirmRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [confirming]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const seq = ++seqRef.current;
@@ -46,28 +42,40 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
 
   async function restore(snapshot: SnapshotManifest) {
     if (busy) return;
-    setBusy(snapshot.id);
-    setConfirming(null);
-    setNotice(null);
     setRestoreError(null);
-    try {
-      const { report, snapshotId } = await api.restore(snapshot.id);
-      const safe = snapshotId ? ` · 安全快照 ${snapshotId}` : '';
-      if (report.missing.length > 0) {
-        setNotice(`还原完成但不完整：已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
-        setRestoreError(
-          `${report.missing.length} 项无法还原（快照里没有对应备份）：${report.missing.join('、')}`,
-        );
-      } else {
-        setNotice(`已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
-      }
-      onRestored();
-    } catch (reason) {
-      setNotice(null);
-      setRestoreError(errorMessage(reason));
-    } finally {
-      setBusy(null);
-    }
+    await ask({
+      title: '还原到这个快照',
+      danger: true,
+      message: (
+        <>
+          <code>{snapshot.id}</code>（{formatTime(snapshot)}，操作：
+          <code>{snapshot.operation}</code>）
+          <br />
+          当前文件会被快照内容覆盖，快照之后新建的文件会被删除。还原前会自动存一份安全快照。
+        </>
+      ),
+      confirmLabel: '还原',
+      // The restore runs inside the dialog so a failure and its retry stay in one place.
+      run: async () => {
+        setBusy(snapshot.id);
+        setNotice(null);
+        try {
+          const { report, snapshotId } = await api.restore(snapshot.id);
+          const safe = snapshotId ? ` · 安全快照 ${snapshotId}` : '';
+          if (report.missing.length > 0) {
+            setNotice(`还原完成但不完整：已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
+            setRestoreError(
+              `${report.missing.length} 项无法还原（快照里没有对应备份）：${report.missing.join('、')}`,
+            );
+          } else {
+            setNotice(`已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
+          }
+          onRestored();
+        } finally {
+          setBusy(null);
+        }
+      },
+    });
   }
 
   return (
@@ -83,6 +91,7 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
         </button>
         {notice && <span className="notice inline">{notice}</span>}
       </header>
+      {confirmNode}
 
       {loadError && (
         <div className="error">
@@ -120,39 +129,13 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
                     onClick={() => {
                       setNotice(null);
                       setRestoreError(null);
-                      setConfirming(snapshot);
+                      void restore(snapshot);
                     }}
                     disabled={busy !== null}
                     aria-label={`还原快照 ${snapshot.id}（${formatTime(snapshot)}）`}
                   >
                     {busy === snapshot.id ? '还原中…' : '还原'}
                   </button>
-                  {confirming?.id === snapshot.id && (
-                    <div className="confirm" ref={confirmRef}>
-                      <span>
-                        还原快照 <code>{confirming.id}</code>（{formatTime(confirming)}，操作：
-                        <code>{confirming.operation}</code>）？当前文件会被快照内容覆盖。
-                      </span>
-                      <span className="confirm-actions">
-                        <button
-                          type="button"
-                          className="primary"
-                          onClick={() => void restore(confirming)}
-                          disabled={busy !== null}
-                          autoFocus
-                        >
-                          {busy !== null ? '还原中…' : '确认还原'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirming(null)}
-                          disabled={busy !== null}
-                        >
-                          取消
-                        </button>
-                      </span>
-                    </div>
-                  )}
                 </li>
               ))}
             </ul>

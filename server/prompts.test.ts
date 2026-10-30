@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { alignPrompt, initPrompts, scanPrompts } from './prompts.ts';
+import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
 import { restoreSnapshot } from './snapshot.ts';
 import { AppError } from '../shared/types.ts';
 import type { PromptTargetSpec } from './prompts.ts';
@@ -83,23 +83,36 @@ test('align replaces a drifting copy with a link and can be rolled back', () => 
   assert.equal(readFileSync(codexPath, 'utf8'), 'changed by hand');
 });
 
-test('a link to another file is reported as external-link, a dangling one as broken', () => {
+test('a link to another file is reported as external-link, a dangling one as broken', (t) => {
   const external = join(root, 'elsewhere.md');
+  const first = targets[0]?.path as string;
   writeFileSync(external, 'other');
-  rmSync(targets[0]?.path as string, { force: true });
-  symlinkSync(external, targets[0]?.path as string, 'file');
+  rmSync(first, { force: true });
+  try {
+    symlinkSync(external, first, 'file');
+  } catch {
+    // Creating file symlinks needs developer mode or elevation on Windows.
+    t.skip('file symlinks need developer mode on this machine');
+    return;
+  }
 
   let report = scanPrompts(source, targets);
   assert.equal(report.targets[0]?.state, 'external-link');
 
-  rmSync(targets[0]?.path as string, { force: true });
+  rmSync(first, { force: true });
   const gone = join(root, 'gone.md');
   writeFileSync(gone, 'x');
-  symlinkSync(gone, targets[0]?.path as string, 'file');
+  try {
+    symlinkSync(gone, first, 'file');
+  } catch {
+    t.skip('file symlinks need developer mode on this machine');
+    return;
+  }
   rmSync(gone, { force: true });
 
   report = scanPrompts(source, targets);
   assert.equal(report.targets[0]?.state, 'broken');
+  rmSync(first, { force: true });
 });
 
 test('align refuses an unknown agent with 400', () => {
@@ -178,5 +191,68 @@ test('align registers a target it creates so a restore removes it', () => {
     assert.equal(existsSync(extraTargets[0]?.path as string), false);
   } finally {
     rmSync(extra, { recursive: true, force: true });
+  }
+});
+
+test('the prompt source carries an etag that changes with its text', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-etag-'));
+  try {
+    const file = join(dir, 'global.md');
+    const missing = readPromptSource(file);
+    assert.equal(missing.exists, false);
+    assert.equal(missing.content, '');
+    assert.equal(missing.etag, 'missing');
+
+    writePrompt(file, 'v1');
+    const first = readPromptSource(file);
+    assert.equal(first.exists, true);
+    assert.notEqual(first.etag, missing.etag);
+    assert.equal(readPromptSource(file).etag, first.etag, 'unchanged text keeps its etag');
+
+    writePrompt(file, 'v2');
+    assert.notEqual(readPromptSource(file).etag, first.etag, 'changed text changes the etag');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('saving with a stale etag is refused and leaves the external edit in place', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-conflict-'));
+  try {
+    const file = join(dir, '.agents', 'prompts', 'global.md');
+    writePrompt(file, 'original');
+    const input = { source: file, snapshotRoot: join(dir, 'snapshots'), targets: [] };
+    const stale = readPromptSource(file).etag;
+
+    // Someone else rewrites the canonical text after the editor read it.
+    writePrompt(file, 'edited elsewhere');
+
+    assert.throws(
+      () => savePromptSource(input, 'my draft', stale),
+      (error: unknown) => error instanceof AppError && error.status === 409,
+    );
+    assert.equal(readFileSync(file, 'utf8'), 'edited elsewhere', 'the external edit survives');
+
+    // Reloading and saving with the fresh etag succeeds.
+    const result = savePromptSource(input, 'my draft', readPromptSource(file).etag);
+    assert.equal(readFileSync(file, 'utf8'), 'my draft');
+    assert.equal(result.content.etag, readPromptSource(file).etag);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('saving without an etag still writes (backwards compatible)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-manager-prompt-noetag-'));
+  try {
+    const file = join(dir, '.agents', 'prompts', 'global.md');
+    writePrompt(file, 'original');
+    const input = { source: file, snapshotRoot: join(dir, 'snapshots'), targets: [] };
+    writePrompt(file, 'edited elsewhere');
+
+    savePromptSource(input, 'my draft');
+    assert.equal(readFileSync(file, 'utf8'), 'my draft');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

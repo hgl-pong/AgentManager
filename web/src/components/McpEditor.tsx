@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import type { JsonObject } from '../lib/settings.ts';
+import { useConfirmDialog } from '../lib/confirm.tsx';
 import {
   clone,
   isRecord,
@@ -64,13 +65,20 @@ export function McpEditor({
     : entries;
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [ask, confirmNode] = useConfirmDialog();
 
   function updateServer(name: string, next: JsonObject) {
     onChange({ ...map, [name]: next });
   }
 
-  function removeServer(name: string) {
-    if (!window.confirm(`删除 MCP server「${name}」？保存后会写入配置文件。`)) return;
+  async function removeServer(name: string) {
+    const proceed = await ask({
+      title: `删除 ${name}`,
+      message: '会从当前草稿里移除这个 MCP server，需要点保存全部才会写入配置文件。',
+      confirmLabel: '删除',
+      danger: true,
+    });
+    if (!proceed) return;
     const next = { ...map };
     delete next[name];
     if (editing === name) setEditing(null);
@@ -146,7 +154,7 @@ export function McpEditor({
                       type="button"
                       className="danger"
                       disabled={disabled}
-                      onClick={() => removeServer(name)}
+                      onClick={() => void removeServer(name)}
                     >
                       删除
                     </button>
@@ -179,6 +187,7 @@ export function McpEditor({
           })}
         </ul>
       )}
+      {confirmNode}
     </div>
   );
 }

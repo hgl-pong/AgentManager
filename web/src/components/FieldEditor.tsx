@@ -1,5 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { ModelInfo, SettingsField } from '../../../shared/types.ts';
+import { ModelPicker } from './ModelPicker.tsx';
+import { useConfirmDialog } from '../lib/confirm.tsx';
 import {
   clone,
   deleteAt,
@@ -40,29 +42,6 @@ export interface FieldApi {  fileId: string;
 
 function matchText(field: SettingsField, basePath: readonly string[]): string {
   return `${pathLabel([...basePath, field.key])} ${field.description ?? ''}`.toLowerCase();
-}
-
-function ModelOptions({ models }: { models: ModelInfo[] }) {
-  const groups = new Map<string, ModelInfo[]>();
-  for (const model of models) {
-    const list = groups.get(model.group) ?? [];
-    list.push(model);
-    groups.set(model.group, list);
-  }
-  return (
-    <>
-      {[...groups.entries()].map(([group, list]) => (
-        <optgroup key={group} label={group === 'default' ? '模型' : group}>
-          {list.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name}
-              {model.thinking ? ' · thinking' : ''}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </>
-  );
 }
 
 export function fieldMatches(
@@ -315,9 +294,7 @@ function StringControl({
 
   const text = typeof value === 'string' ? value : value === undefined ? '' : String(value);
   const modelOptions = api.modelPaths.has(pathLabel(path)) ? api.modelOptions : [];
-  const modelListId = modelOptions.length > 0 ? `${id}-models` : undefined;
   const suggestionsId = field.suggestions && field.suggestions.length > 0 ? `${id}-suggestions` : undefined;
-  const listId = modelListId ?? suggestionsId;
 
   if (field.sensitive) {
     return (
@@ -362,6 +339,21 @@ function StringControl({
     );
   }
 
+  // Model-ID fields get the same searchable picker as the 模型 tab instead of a native datalist.
+  if (modelOptions.length > 0) {
+    return (
+      <ModelPicker
+        label={pathLabel(path)}
+        buttonId={id}
+        value={text}
+        models={modelOptions}
+        placeholder={placeholder}
+        disabled={api.disabled}
+        onChange={(next) => api.setValue(path, next === '' ? undefined : next)}
+      />
+    );
+  }
+
   return (
     <>
       <input
@@ -371,17 +363,12 @@ function StringControl({
         value={text}
         disabled={api.disabled}
         placeholder={placeholder}
-        list={listId}
+        list={suggestionsId}
         spellCheck={false}
         aria-invalid={api.errors.has(pathLabel(path))}
         onChange={(event) => api.setValue(path, event.target.value === '' ? undefined : event.target.value)}
       />
-      {modelListId && (
-        <datalist id={modelListId}>
-          <ModelOptions models={modelOptions} />
-        </datalist>
-      )}
-      {suggestionsId && !modelListId && (
+      {suggestionsId && (
         <datalist id={suggestionsId}>
           {field.suggestions?.map((entry) => (
             <option key={String(entry)} value={String(entry)} />
@@ -1051,8 +1038,6 @@ function MapRow({
   const [keyError, setKeyError] = useState<string | null>(null);
   const id = useId();
   const sensitive = valueField.sensitive === true || isSecretKey(mapKey);
-  const modelOptions = /MODEL$/i.test(mapKey) ? api.modelOptions : [];
-  const modelListId = modelOptions.length > 0 ? `${id}-models` : undefined;
   const jsonLike =
     valueField.type === 'json' ||
     valueField.type === 'object' ||
@@ -1130,13 +1115,7 @@ function MapRow({
             sensitive={sensitive}
             ariaLabel={`${mapKey} 的值`}
             onChange={onValue}
-            listId={modelListId}
           />
-          {modelListId && (
-            <datalist id={modelListId}>
-              <ModelOptions models={modelOptions} />
-            </datalist>
-          )}
         </>
       )}
       <button
@@ -1218,8 +1197,9 @@ export function CustomKeyPanel({ api }: { api: FieldApi }) {
   const [valueText, setValueText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
 
-  function add() {
+  async function add() {
     setError(null);
     setNotice(null);
     const parts = pathText
@@ -1242,7 +1222,12 @@ export function CustomKeyPanel({ api }: { api: FieldApi }) {
       return;
     }
     if (getAt(api.data, parts) !== undefined) {
-      if (!window.confirm(`键 ${parts.join('.')} 已存在，覆盖它的值？`)) return;
+      const proceed = await ask({
+        title: `键 ${parts.join('.')} 已存在`,
+        message: '继续会用新的值覆盖它当前的内容，改动先落在草稿里。',
+        confirmLabel: '覆盖',
+      });
+      if (!proceed) return;
     }
     api.setValue(parts, parsed);
     setNotice(`已写入草稿：${parts.join('.')}（仍需点击保存全部）`);
@@ -1277,12 +1262,13 @@ export function CustomKeyPanel({ api }: { api: FieldApi }) {
             onChange={(event) => setValueText(event.target.value)}
           />
         </label>
-        <button type="button" className="secondary" disabled={api.disabled} onClick={add}>
+        <button type="button" className="secondary" disabled={api.disabled} onClick={() => void add()}>
           写入草稿
         </button>
       </div>
       {error && <p className="field-error">{error}</p>}
       {notice && <p className="notice inline">{notice}</p>}
+      {confirmNode}
     </details>
   );
 }

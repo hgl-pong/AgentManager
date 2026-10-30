@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, RefObject } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
+import { useConfirmDialog } from '../lib/confirm.tsx';
 import type {
   McpActionKind,
   McpActionRequest,
@@ -51,6 +52,14 @@ interface CellAction {
   label: string;
 }
 
+/** A question for the shared confirm dialog; `run` inside it performs the write. */
+interface McpQuestion {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger: boolean;
+}
+
 function cellActions(cell: McpMatrixCell, row: McpMatrixRow): CellAction[] {
   switch (cell.state) {
     case 'synced':
@@ -74,12 +83,39 @@ function cellActions(cell: McpMatrixCell, row: McpMatrixRow): CellAction[] {
   }
 }
 
-function confirmText(action: McpActionKind, name: string, agent: McpAgentInfo, row: McpMatrixRow): string {
-  if (action === 'remove') return `从 ${agent.label} 删除 MCP server「${name}」？写前会自动建快照。`;
-  if (action === 'sync') return `用源里的「${name}」覆盖 ${agent.label} 的配置？写前会自动建快照。`;
+function confirmText(
+  action: McpActionKind,
+  name: string,
+  agent: McpAgentInfo,
+  row: McpMatrixRow,
+): McpQuestion {
+  if (action === 'remove')
+    return {
+      title: `从 ${agent.label} 移除 ${name}`,
+      message: `会从 ${agent.label} 的配置文件里删掉这个 MCP server，源文件和其它 agent 不受影响。`,
+      confirmLabel: '移除',
+      danger: true,
+    };
+  if (action === 'sync')
+    return {
+      title: `把 ${name} 同步到 ${agent.label}`,
+      message: `用源里的定义覆盖 ${agent.label} 现有的同名配置，写入前会自动建快照。`,
+      confirmLabel: '同步',
+      danger: false,
+    };
   return row.inSource
-    ? `源里已有「${name}」。用 ${agent.label} 的定义覆盖源？写前会自动建快照。`
-    : `把 ${agent.label} 的「${name}」收进源？写前会自动建快照。`;
+    ? {
+        title: `用 ${agent.label} 的定义覆盖源`,
+        message: `源里已有 ${name}。这一步会把源改成 ${agent.label} 当前的写法，其它 agent 的配置不变，之后可用「同步到全部」对齐。`,
+        confirmLabel: '覆盖源',
+        danger: false,
+      }
+    : {
+        title: `把 ${name} 收进源`,
+        message: `会把 ${agent.label} 里的这个 MCP server 写进源文件，之后可以一键同步到其它 agent。`,
+        confirmLabel: '收进源',
+        danger: false,
+      };
 }
 
 function emptyForm(agents: McpAgentInfo[]): FormState {
@@ -96,6 +132,22 @@ function emptyForm(agents: McpAgentInfo[]): FormState {
     syncTo: agents.map((agent) => agent.key),
     error: null,
   };
+}
+
+/** Stable text of everything the user can edit, used to detect "has this form changed?" */
+function serializeForm(form: FormState): string {
+  return JSON.stringify([
+    form.mode,
+    form.name,
+    form.transport,
+    form.command,
+    form.args,
+    form.cwd,
+    form.env,
+    form.url,
+    form.headers,
+    form.syncTo,
+  ]);
 }
 
 function pairsToText(pairs: Record<string, string> | undefined): string {
@@ -181,6 +233,9 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
   const seqRef = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [ask, confirmNode] = useConfirmDialog();
+  // Snapshot of the form as opened, so closing can tell "nothing typed" from "would lose edits".
+  const baselineRef = useRef('');
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const seq = ++seqRef.current;
@@ -223,10 +278,31 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
     if (formKey) formRef.current?.scrollIntoView({ block: 'nearest' });
   }, [formKey]);
 
-  /** 执行一个写操作；成功返回 true。失败时只给 toast，保留当前视图。 */
-  async function run(key: string, body: McpActionRequest, question: string | null): Promise<boolean | string> {
+  /**
+   * Runs one write. With a `question` the dialog performs it and keeps a failure inside itself;
+   * without one the caller gets the error back so it can show it in its own form.
+   */
+  async function run(
+    key: string,
+    body: McpActionRequest,
+    question: McpQuestion | null,
+  ): Promise<boolean | string> {
     if (busy) return false;
-    if (question !== null && !window.confirm(question)) return false;
+    if (question !== null) return ask({ ...question, run: () => perform(key, body) });
+    try {
+      await perform(key, body, { toastOnError: true });
+      return true;
+    } catch (reason) {
+      return errorMessage(reason);
+    }
+  }
+
+  /** The write itself; throws so the caller can show the message where the action started. */
+  async function perform(
+    key: string,
+    body: McpActionRequest,
+    { toastOnError = false }: { toastOnError?: boolean } = {},
+  ): Promise<void> {
     setBusy(key);
     try {
       const result = await api.mcpAction(body);
@@ -236,32 +312,57 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
       if (result.snapshotIds.length > 0) parts.push(`快照 ${result.snapshotIds.join('、')}`);
       showToast(result.warnings.length > 0 ? 'warning' : 'success', parts.join(' · '));
       onChanged();
-      return true;
     } catch (reason) {
-      const message = errorMessage(reason);
-      showToast('error', `操作失败：${message}`);
-      return message;
+      // Inside the dialog the message is already rendered there; toasting it too would duplicate it.
+      if (toastOnError) showToast('error', `操作失败：${errorMessage(reason)}`);
+      throw reason;
     } finally {
       setBusy(null);
     }
   }
 
   function importAll() {
-    void run(
-      'importAll',
-      { action: 'importAll', prefer: 'claude' },
-      '把各 agent 已配置、源里还没有的 MCP server 收进源？同名冲突时以 Claude Code 为准。写前会自动建快照。',
-    );
+    void run('importAll', { action: 'importAll', prefer: 'claude' }, {
+      title: '把 agent 现有配置收进源',
+      message:
+        '会把各 agent 已配置、源里还没有的 MCP server 收进源文件。同名定义不一致时以 Claude Code 的写法为准，写入前会自动建快照。',
+      confirmLabel: '收进源',
+      danger: false,
+    });
   }
 
   function openNew() {
     if (!report) return;
-    setForm(emptyForm(report.agents));
+    const next = emptyForm(report.agents);
+    baselineRef.current = serializeForm(next);
+    setForm(next);
   }
 
   function openEdit(row: McpMatrixRow) {
     if (!report || !row.source) return;
-    setForm(formFromSource(row.name, row.source, report.agents));
+    const next = formFromSource(row.name, row.source, report.agents);
+    baselineRef.current = serializeForm(next);
+    setForm(next);
+  }
+
+  /** True when the open form holds edits that differ from what it was opened with. */
+  function formDirty(): boolean {
+    return form !== null && serializeForm(form) !== baselineRef.current;
+  }
+
+  /** Closing drops whatever is typed in the form, so ask first when there is anything to lose. */
+  async function closeForm() {
+    if (!form || busy) return;
+    if (formDirty()) {
+      const discard = await ask({
+        title: '放弃这个表单？',
+        danger: true,
+        message: `「${form.name.trim() || '未命名'}」里填写的内容还没有保存，关闭后会丢掉。`,
+        confirmLabel: '放弃并关闭',
+      });
+      if (!discard) return;
+    }
+    setForm(null);
   }
 
   function patch(next: Partial<FormState>) {
@@ -278,8 +379,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
     });
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event: FormEvent) {    event.preventDefault();
     if (!form || !report) return;
     const server = buildServer(form);
     if (typeof server === 'string') {
@@ -292,11 +392,26 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
     const targets = report.agents.filter((agent) => agents.includes(agent.key)).map((agent) => agent.label);
     const question =
       form.mode === 'new' && exists
-        ? `源里已有「${name}」，保存会覆盖它。继续吗？`
-        : `保存「${name}」到源${targets.length > 0 ? `，并同步到 ${targets.join('、')}` : ''}？写前会自动建快照。`;
+        ? {
+            title: `覆盖源里的 ${name}`,
+            message: `源文件里已经有同名 server。保存会用当前表单的定义覆盖它，然后再同步到选中的 agent。`,
+            confirmLabel: '覆盖并保存',
+            danger: false,
+          }
+        : {
+            title: `保存 ${name}`,
+            message: `
+              会写入源文件${targets.length > 0 ? `，并同步到 ${targets.join('、')}` : ''}。写入前会自动建快照。
+            `,
+            confirmLabel: '保存',
+            danger: false,
+          };
     const result = await run('saveSource', { action: 'saveSource', name, server, agents }, question);
-    if (result === true) setForm(null);
-    else if (typeof result === 'string') setForm((current) => (current ? { ...current, error: result } : current));
+    // A successful save means the form content is on disk; closing afterwards must not ask again.
+    if (result === true) {
+      baselineRef.current = '';
+      setForm(null);
+    } else if (typeof result === 'string') setForm((current) => (current ? { ...current, error: result } : current));
   }
 
   if (!report && loadError) {
@@ -367,7 +482,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
           onPatch={patch}
           onToggleSync={toggleSync}
           onSubmit={submit}
-          onCancel={() => setForm(null)}
+          onCancel={() => void closeForm()}
         />
       )}
 
@@ -469,7 +584,12 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
                             void run(
                               `sync:${row.name}`,
                               { action: 'sync', name: row.name },
-                              `用源里的「${row.name}」覆盖所有 agent 的配置？写前会自动建快照。`,
+                              {
+                                title: `同步 ${row.name} 到全部 agent`,
+                                message: `会用源里的定义覆盖每个 agent 的现有配置，写入前会自动建快照。`,
+                                confirmLabel: '同步到全部',
+                                danger: false,
+                              },
                             )
                           }
                         >
@@ -484,7 +604,13 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
                             void run(
                               `deleteSource:${row.name}`,
                               { action: 'deleteSource', name: row.name },
-                              `从源删除「${row.name}」？各 agent 里的条目会保留并显示为孤儿。写前会自动建快照。`,
+                              {
+                                title: `从源删除 ${row.name}`,
+                                message:
+                                  '只会删掉源文件里的这一条，各 agent 里已同步的配置会保留并变成「孤儿」，之后可以逐个移除。',
+                                confirmLabel: '从源删除',
+                                danger: true,
+                              },
                             )
                           }
                         >
@@ -510,6 +636,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
           </button>
         </div>
       )}
+      {confirmNode}
     </section>
   );
 }

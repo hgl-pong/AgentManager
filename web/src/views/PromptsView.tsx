@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, errorMessage, isAbortError } from '../api.ts';
+import { api, errorMessage, isAbortError, HttpError } from '../api.ts';
+import { isConfirmOpen, useConfirmDialog } from '../lib/confirm.tsx';
+import type { ReactNode } from 'react';
 import type { PromptLink, PromptsReport, PromptState } from '../../../shared/types.ts';
 
 const STATE_LABEL: Record<PromptState, string> = {
@@ -22,6 +24,8 @@ interface PendingAction {
   kind: 'init' | 'align';
   agent?: string;
   label: string;
+  detail: ReactNode;
+  danger: boolean;
 }
 
 export interface PromptsHandle {
@@ -43,17 +47,39 @@ export function PromptsView({
   const [report, setReport] = useState<PromptsReport | null>(null);
   const [content, setContent] = useState('');
   const [savedContent, setSavedContent] = useState('');
-  const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState<'save' | 'action' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [diskChanged, setDiskChanged] = useState(false);
+  const [ask, confirmNode] = useConfirmDialog();
 
   const contentRef = useRef('');
   const savedRef = useRef('');
   const diskRef = useRef('');
+  // Etag of the text currently considered "read from disk"; the save echoes it as an optimistic lock.
+  const etagRef = useRef('');
   const seqRef = useRef(0);
+  const busyRef = useRef<'save' | 'action' | null>(null);
+  const saveRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+
+  // Ctrl+S saves the source here too; the listener reads refs so it never needs re-binding.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      // A confirmation owns the keyboard while it is open.
+      if (busyRef.current !== null || isConfirmOpen()) return;
+      if (contentRef.current === savedRef.current) return;
+      saveRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const applyEditor = useCallback((draft: string, saved: string) => {
     contentRef.current = draft;
@@ -63,9 +89,10 @@ export function PromptsView({
   }, []);
 
   const resetEditor = useCallback(
-    (disk: string) => {
-      diskRef.current = disk;
-      applyEditor(disk, disk);
+    (source: { content: string; etag: string }) => {
+      diskRef.current = source.content;
+      etagRef.current = source.etag;
+      applyEditor(source.content, source.content);
       setDiskChanged(false);
     },
     [applyEditor],
@@ -83,9 +110,9 @@ export function PromptsView({
         if (contentRef.current !== savedRef.current) {
           // 本地有未保存修改：只刷新报告，绝不覆盖编辑器内容。
           diskRef.current = nextContent.content;
-          setDiskChanged(nextContent.content !== savedRef.current);
+          setDiskChanged(nextContent.etag !== etagRef.current);
         } else {
-          resetEditor(nextContent.content);
+          resetEditor(nextContent);
         }
       } catch (reason) {
         if (seq !== seqRef.current || signal?.aborted || isAbortError(reason)) return;
@@ -109,7 +136,7 @@ export function PromptsView({
 
   useEffect(() => {
     handleRef.current = {
-      discardAndReload: () => resetEditor(diskRef.current),
+      discardAndReload: () => resetEditor({ content: diskRef.current, etag: etagRef.current }),
     };
     return () => {
       handleRef.current = null;
@@ -126,39 +153,44 @@ export function PromptsView({
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  async function confirmAction() {
-    if (!pending || busy) return;
-    const action = pending;
-    setBusy('action');
-    setError(null);
+  /** Asks, then performs the write inside the dialog so failures stay next to the action. */
+  function requestAction(next: PendingAction) {
     setNotice(null);
-    try {
-      const result = await api.promptAction({ action: action.kind, agent: action.agent });
-      setReport(result.report);
-      setPending(null);
-      setNotice(`${result.message} · 快照 ${result.snapshotId}`);
-      // 写操作已成功；后续刷新由 version 触发的 load 负责，失败只显示为刷新错误。
-      onChanged();
-    } catch (reason) {
-      setNotice(null);
-      setError(errorMessage(reason));
-    } finally {
-      setBusy(null);
-    }
+    void ask({
+      title: next.label,
+      message: next.detail,
+      confirmLabel: next.kind === 'init' ? '初始化并迁移' : '对齐到源',
+      danger: next.danger,
+      run: async () => {
+        setBusy('action');
+        setError(null);
+        setNotice(null);
+        try {
+          const result = await api.promptAction({ action: next.kind, agent: next.agent });
+          setReport(result.report);
+          setNotice(`${result.message} · 快照 ${result.snapshotId}`);
+          // 写操作已成功；后续刷新由 version 触发的 load 负责，失败只显示为刷新错误。
+          onChanged();
+        } finally {
+          setBusy(null);
+        }
+      },
+    });
   }
 
-  async function save() {
-    if (busy) return;
+  /** The write itself; throws so the dialog (or the page) can report the failure where it started. */
+  async function performSave(): Promise<void> {
     const draft = contentRef.current;
     setBusy('save');
     setError(null);
     setNotice(null);
     try {
-      const result = await api.savePrompt(draft);
+      const result = await api.savePrompt(draft, etagRef.current);
       setReport(result.report);
       diskRef.current = result.content.content;
+      etagRef.current = result.content.etag;
       if (contentRef.current === draft) {
-        resetEditor(result.content.content);
+        resetEditor(result.content);
       } else {
         // 保存期间用户继续输入：保留新输入，只把“已保存”基线推进到刚写入磁盘的内容。
         savedRef.current = result.content.content;
@@ -169,12 +201,67 @@ export function PromptsView({
       setNotice(`保存成功 · 快照 ${result.snapshotId} · ${synced}/${result.report.targets.length} 个 agent 已同步`);
       onChanged();
     } catch (reason) {
-      setNotice(null);
-      setError(errorMessage(reason));
+      // The file moved on since we read it: keep the draft, learn the newer text, and keep the message up.
+      if (reason instanceof HttpError && reason.status === 409) {
+        await load();
+        setDiskChanged(true);
+      }
+      throw reason;
     } finally {
       setBusy(null);
     }
   }
+
+  async function save() {
+    if (busy) return;
+    if (diskChanged) {
+      // Writing now would silently discard whatever changed the file on disk; ask instead.
+      await ask({
+        title: '磁盘上的正文已被别处修改',
+        danger: true,
+        message: (
+          <>
+            编辑器里的草稿是基于旧内容写的，保存会用草稿整个覆盖磁盘上较新的正文，之后只能从快照还原。
+            <br />
+            想保留磁盘上的改动，先点「载入磁盘版本」再重新编辑。
+          </>
+        ),
+        confirmLabel: '覆盖并保存',
+        run: performSave,
+      });
+      return;
+    }
+    try {
+      await performSave();
+    } catch (reason) {
+      setNotice(null);
+      setError(errorMessage(reason));
+    }
+  }
+
+  /** Drops the local draft for the version currently on disk, after the user agrees. */
+  async function loadFromDisk() {
+    if (busy) return;
+    const discard = contentRef.current !== savedRef.current;
+    if (discard) {
+      const proceed = await ask({
+        title: '载入磁盘上的正文',
+        danger: true,
+        message: '编辑器里未保存的修改会丢失，改回磁盘上当前的正文。',
+        confirmLabel: '放弃并载入',
+      });
+      if (!proceed) return;
+    }
+    resetEditor({ content: diskRef.current, etag: etagRef.current });
+    setDiskChanged(false);
+    setError(null);
+    setNotice('已载入磁盘上的正文。');
+  }
+
+  // Kept in a ref so the Ctrl+S listener stays bound once and still calls the newest save().
+  useEffect(() => {
+    saveRef.current = () => void save();
+  });
 
   async function open(path: string) {
     setNotice(null);
@@ -223,23 +310,14 @@ export function PromptsView({
       {error && <p className="error">{error}</p>}
       {diskChanged && (
         <p className="warning">
-          磁盘上的正文已在别处修改。为避免覆盖你的编辑，编辑器没有重新载入；点「重新扫描」可放弃本地修改并载入磁盘内容。
+          磁盘上的正文已在别处修改。为避免覆盖你的编辑，编辑器没有重新载入；直接保存会先确认覆盖。
+          <button type="button" className="link-button" disabled={busy !== null} onClick={() => void loadFromDisk()}>
+            载入磁盘版本
+          </button>
         </p>
       )}
 
-      {pending && (
-        <div className="confirm">
-          <span>{pending.label}？写前会自动建快照，原文件可回滚。</span>
-          <span className="confirm-actions">
-            <button type="button" className="primary" onClick={confirmAction} disabled={busy !== null}>
-              {busy === 'action' ? '执行中…' : '确认'}
-            </button>
-            <button type="button" onClick={() => setPending(null)} disabled={busy !== null}>
-              取消
-            </button>
-          </span>
-        </div>
-      )}
+      {confirmNode}
 
       <div className="cards">
         <article className="card wide editor-card">
@@ -287,7 +365,18 @@ export function PromptsView({
                   disabled={busy !== null}
                   onClick={() => {
                     setNotice(null);
-                    setPending({ kind: 'init', label: '从 CLAUDE.md 初始化单一源并迁移所有 agent' });
+                    requestAction({
+                      kind: 'init',
+                      label: '从 CLAUDE.md 初始化单一源',
+                      danger: false,
+                      detail: (
+                        <>
+                          会以 <code>CLAUDE.md</code> 的内容建立单一源正文，再把每个 agent 的提示词文件改成指向它的链接。
+                          <br />
+                          现有文件先建快照，可随时还原。
+                        </>
+                      ),
+                    });
                   }}
                 >
                   从 CLAUDE.md 初始化
@@ -329,7 +418,24 @@ export function PromptsView({
                   disabled={busy !== null}
                   onClick={() => {
                     setNotice(null);
-                    setPending({ kind: 'align', agent: target.key, label: `让 ${target.label} 的提示词指向单一源` });
+                    requestAction({
+                      kind: 'align',
+                      agent: target.key,
+                      label: `让 ${target.label} 指向单一源`,
+                      danger: target.state === 'drift' || target.state === 'external-link',
+                      detail:
+                        target.state === 'drift' || target.state === 'external-link' ? (
+                          <>
+                            会把 <code>{target.path}</code> 换成指向单一源的链接，
+                            该文件当前的独立内容会被源内容覆盖（快照里留有原副本）。
+                          </>
+                        ) : (
+                          <>
+                            会在 <code>{target.path}</code> 建一个指向单一源的链接，
+                            之后修改提示词对所有 agent 同时生效。
+                          </>
+                        ),
+                    });
                   }}
                 >
                   对齐到源

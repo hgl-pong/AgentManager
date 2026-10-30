@@ -81,7 +81,8 @@ export const api = {
   prompts: (signal?: AbortSignal) => request<PromptsReport>('/api/prompts', { signal }),
   promptAction: (body: PromptActionRequest) => request<PromptActionReport>('/api/prompts', post(body)),
   promptContent: (signal?: AbortSignal) => request<PromptSourceContent>('/api/prompts/content', { signal }),
-  savePrompt: (content: string) => request<PromptSaveReport>('/api/prompts/content', post({ content })),
+  savePrompt: (content: string, etag: string) =>
+    request<PromptSaveReport>('/api/prompts/content', post({ content, etag })),
   config: (signal?: AbortSignal) => request<ConfigReport>('/api/config', { signal }),
   mcp: (signal?: AbortSignal) => request<McpMatrixReport>('/api/mcp', { signal }),
   mcpAction: (body: McpActionRequest) => request<McpActionResponse>('/api/mcp', post(body)),
