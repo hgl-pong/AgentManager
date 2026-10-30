@@ -319,6 +319,17 @@ export function SettingsView({
   const [notice, setNotice] = useState<string | null>(null);
   const [models, setModels] = useState<ModelsReport | null>(null);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsSourceInput, setModelsSourceInput] = useState(() => {
+    try {
+      return window.localStorage.getItem('agentmanager.modelsSource') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const modelsSourceRef = useRef(modelsSourceInput);
+  useEffect(() => {
+    modelsSourceRef.current = modelsSourceInput;
+  }, [modelsSourceInput]);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const seqRef = useRef(0);
   const dirtyRef = useRef(false);
@@ -339,13 +350,24 @@ export function SettingsView({
     [],
   );
 
-  const loadModels = useCallback(async (refresh = false) => {
+  const loadModels = useCallback(async (refresh = false, sourceOverride?: string) => {
+    const source = (sourceOverride ?? modelsSourceRef.current).trim();
     setModelsLoading(true);
     try {
-      setModels(await api.models(refresh));
+      const report = await api.models(refresh, undefined, source || undefined);
+      setModels(report);
+      if (report.source) {
+        setModelsSourceInput(report.source);
+        modelsSourceRef.current = report.source;
+        try {
+          window.localStorage.setItem('agentmanager.modelsSource', report.source);
+        } catch {
+          // best effort
+        }
+      }
     } catch (reason) {
       setModels({
-        source: '',
+        source: source || '',
         fetchedAt: new Date().toISOString(),
         cached: false,
         error: errorMessage(reason),
@@ -1135,11 +1157,39 @@ export function SettingsView({
               从本地 OpenAI 兼容端点读取模型列表，选择后写入各 agent 的配置文件；点底部「保存全部」生效。
             </p>
           </div>
-          <button type="button" onClick={() => void loadModels(true)} disabled={modelsLoading}>
+          <button type="button" onClick={() => void loadModels(true, modelsSourceInput)} disabled={modelsLoading}>
             {modelsLoading ? '刷新中…' : '刷新模型'}
           </button>
         </header>
 
+        <div className="models-source-row">
+          <label className="models-source-label">
+            模型源 URL
+            <input
+              className="control"
+              type="url"
+              value={modelsSourceInput}
+              placeholder="http://127.0.0.1:15721/v1"
+              spellCheck={false}
+              autoComplete="off"
+              disabled={modelsLoading}
+              onChange={(event) => setModelsSourceInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void loadModels(true, (event.target as HTMLInputElement).value);
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void loadModels(true, modelsSourceInput)}
+            disabled={modelsLoading || modelsSourceInput.trim() === ''}
+          >
+            {modelsLoading ? '读取中…' : '读取模型'}
+          </button>
+        </div>
         <p className="meta">
           来源 <code>{models?.source || '正在读取…'}</code>
           {models?.fetchedAt ? ` · 更新于 ${new Date(models.fetchedAt).toLocaleTimeString()}` : ''}
@@ -1201,9 +1251,78 @@ export function SettingsView({
           </table>
         </div>
         <p className="hint">
-          模型源可用环境变量 <code>AGENT_MANAGER_MODELS_URL</code> 覆盖，默认
-          <code>http://127.0.0.1:15721/v1</code>。
+          可直接在上方填写模型源 URL（base URL 或完整的 <code>/models</code> 地址）；留空时使用环境变量
+          <code>AGENT_MANAGER_MODELS_URL</code> 或默认 <code>http://127.0.0.1:15721/v1</code>。
         </p>
+
+        <section className="models-catalog">
+          <header className="models-catalog-head">
+            <h3>模型列表</h3>
+            <span className="meta">{models?.models.length ?? 0} 个模型</span>
+          </header>
+          {models?.models.length ? (
+            <div className="table-wrap">
+              <table className="model-catalog-table">
+                <colgroup>
+                  <col className="col-id" />
+                  <col className="col-group" />
+                  <col className="col-num" />
+                  <col className="col-num" />
+                  <col className="col-effort" />
+                  <col className="col-caps" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">ID / 名称</th>
+                    <th scope="col">分组</th>
+                    <th scope="col">上下文</th>
+                    <th scope="col">输出</th>
+                    <th scope="col">推理强度</th>
+                    <th scope="col">其他能力</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {models.models.map((model) => {
+                    return (
+                      <tr key={model.id} className="model-catalog-row">
+                        <td className="model-catalog-id">
+                          <code>{model.id}</code>
+                          <span className="model-catalog-name">{model.name !== model.id ? model.name : ''}</span>
+                        </td>
+                        <td className="model-catalog-group">
+                          <span className="model-group-badge">
+                            {model.group === 'default' ? '默认' : model.group}
+                          </span>
+                        </td>
+                        <td className="model-catalog-num">{formatTokens(model.contextWindow) || '—'}</td>
+                        <td className="model-catalog-num">{formatTokens(model.maxOutputTokens) || '—'}</td>
+                        <td className="model-catalog-effort">
+                          {model.effort && model.effortLevels?.length
+                            ? model.effortLevels.map((level) => (
+                                <span key={level} className="model-cap model-cap--effort">{level}</span>
+                              ))
+                            : model.effort
+                              ? <span className="model-cap model-cap--effort">effort</span>
+                              : <span className="model-cap model-cap--none">—</span>}
+                        </td>
+                        <td className="model-catalog-caps">
+                          {model.thinking && <span className="model-cap model-cap--thinking">thinking</span>}
+                          {model.imageInput && <span className="model-cap model-cap--image">图片</span>}
+                          {model.pdfInput && <span className="model-cap model-cap--pdf">PDF</span>}
+                          {!model.thinking && !model.imageInput && !model.pdfInput && (
+                            <span className="model-cap model-cap--none">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="muted">暂无模型数据，填写模型源 URL 后点「读取模型」。</p>
+          )}
+        </section>
       </div>
     );
   }

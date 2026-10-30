@@ -12,7 +12,7 @@ parent: architecture
 
 ## Boundary
 
-- **来源**：默认 `http://127.0.0.1:15721/v1/models`；可用环境变量 `AGENT_MANAGER_MODELS_URL` 覆盖（填 base URL 或完整的 `/models` URL）。
+- **来源**：默认 `http://127.0.0.1:15721/v1/models`；可用环境变量 `AGENT_MANAGER_MODELS_URL` 覆盖，或在「模型」页签直接填写模型源 URL（base URL 或完整的 `/models` URL），通过 `GET /api/models?url=...` 传入。
 - **归一化**：兼容 OpenAI `{data:[…]}` 与 Codex `{models:[…]}` 两种载荷；保留 id、显示名、分组（`default` 或 `id` 前缀）、上下文窗口、最大输出、thinking/effort/图片/PDF 能力。无 id 的条目丢弃。
 - **缓存**：内存缓存 60 秒；`GET /api/models?refresh=1` 强制刷新。端点失败时返回上次成功的缓存并标记 `stale` + `error`；没有缓存则返回空列表与错误，界面仍允许手动输入模型 ID。
 - **超时**：5 秒；只接受 http/https 源。

@@ -481,8 +481,17 @@ async function handleRequest(
   }
 
   if (pathname === '/api/models' && request.method === 'GET') {
-    const refresh = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams.get('refresh') === '1';
-    json(response, 200, await getModelsReport({ refresh }));
+    const params = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams;
+    const refresh = params.get('refresh') === '1';
+    const url =
+      params.get('url') ??
+      params.get('baseUrl') ??
+      params.get('source') ??
+      params.get('modelsUrl') ??
+      params.get('endpoint') ??
+      params.get('models_url') ??
+      undefined;
+    json(response, 200, await getModelsReport({ refresh, url }));
     return;
   }
 

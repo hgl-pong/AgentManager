@@ -97,6 +97,11 @@ export const api = {
   settings: (signal?: AbortSignal) => request<SettingsReport>('/api/settings', { signal }),
   saveSettings: (body: SettingsSaveRequest) =>
     request<SettingsSaveResult>('/api/settings/save', post(body)),
-  models: (refresh = false, signal?: AbortSignal) =>
-    request<ModelsReport>(`/api/models${refresh ? '?refresh=1' : ''}`, { signal }),
+  models: (refresh = false, signal?: AbortSignal, url?: string) => {
+    const params = new URLSearchParams();
+    if (refresh) params.set('refresh', '1');
+    if (url && url.trim() !== '') params.set('url', url.trim());
+    const qs = params.toString();
+    return request<ModelsReport>(`/api/models${qs ? `?${qs}` : ''}`, { signal });
+  },
 };

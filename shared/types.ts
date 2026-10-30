@@ -345,6 +345,8 @@ export interface ModelInfo {
   maxOutputTokens?: number;
   thinking?: boolean;
   effort?: boolean;
+  /** Supported reasoning-effort levels, e.g. ["low","medium","high","xhigh"]. */
+  effortLevels?: string[];
   imageInput?: boolean;
   pdfInput?: boolean;
 }

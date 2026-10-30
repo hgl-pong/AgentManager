@@ -33,6 +33,23 @@ function capabilityFlag(value: unknown): boolean | undefined {
   return undefined;
 }
 
+const EFFORT_LEVEL_KEYS = ['low', 'medium', 'high', 'max', 'xhigh', 'minimal', 'none'];
+
+/** Collects the reasoning-effort levels an endpoint reports as supported. */
+function supportedEffortLevels(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  const levels: string[] = [];
+  for (const key of Object.keys(record)) {
+    if (key === 'supported') continue;
+    if (capabilityFlag(record[key]) === true) levels.push(key);
+  }
+  // Prefer the canonical order when all present.
+  const ordered = EFFORT_LEVEL_KEYS.filter((level) => levels.includes(level));
+  const rest = levels.filter((level) => !EFFORT_LEVEL_KEYS.includes(level));
+  return [...ordered, ...rest];
+}
+
 function rawList(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (payload && typeof payload === 'object') {
@@ -75,6 +92,18 @@ export function normalizeModels(payload: unknown): ModelInfo[] {
         capabilityFlag(compat.supportsReasoningEffort) ??
         capabilityFlag(record.supports_reasoning_effort) ??
         false,
+      effortLevels: (() => {
+        const raw =
+          capabilities.effort ??
+          (compat.supportsReasoningEffort && typeof compat.supportsReasoningEffort === 'object'
+            ? compat.supportsReasoningEffort
+            : undefined) ??
+          (record.supports_reasoning_effort && typeof record.supports_reasoning_effort === 'object'
+            ? record.supports_reasoning_effort
+            : undefined);
+        const levels = supportedEffortLevels(raw);
+        return levels.length ? levels : undefined;
+      })(),
       imageInput: capabilityFlag(capabilities.image_input) ?? input.includes('image'),
       pdfInput: capabilityFlag(capabilities.pdf_input) ?? input.includes('pdf'),
     });
@@ -90,6 +119,12 @@ export interface ModelsInput {
   refresh?: boolean;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Override the source URL (base URL or full /models URL). Falls back to env then default. */
+  url?: string;
+  baseUrl?: string;
+  source?: string;
+  modelsUrl?: string;
+  endpoint?: string;
 }
 
 /**
@@ -97,12 +132,18 @@ export interface ModelsInput {
  * report with `error` instead of throwing, so the settings page can fall back to free text.
  */
 export async function getModelsReport(input: ModelsInput = {}): Promise<ModelsReport> {
+  const override =
+    input.url ?? input.baseUrl ?? input.source ?? input.modelsUrl ?? input.endpoint;
+  const baseSource =
+    typeof override === 'string' && override.trim() !== ''
+      ? override.trim()
+      : process.env.AGENT_MANAGER_MODELS_URL ?? DEFAULT_BASE_URL;
   let url: string;
   try {
-    url = modelsUrl();
+    url = modelsUrl(baseSource);
   } catch (error) {
     return {
-      source: process.env.AGENT_MANAGER_MODELS_URL ?? DEFAULT_BASE_URL,
+      source: baseSource,
       fetchedAt: new Date(input.now?.() ?? Date.now()).toISOString(),
       cached: false,
       error: error instanceof Error ? error.message : String(error),
