@@ -503,3 +503,97 @@ export interface HookActionResponse {
   report: HookMatrixReport;
 }
 
+// ---- cache management ----
+
+/** `cache` is regenerable machine data; `history` holds conversations the user may want to keep. */
+export type CacheRisk = 'cache' | 'history';
+
+export type CacheTargetKind = 'dir' | 'file' | 'glob';
+
+/** A known place an agent grows over time. The list is built from paths, never from user input. */
+export interface CacheTargetSpec {
+  id: string;
+  agent: string;
+  agentLabel: string;
+  label: string;
+  /** Absolute path; for `glob` the last segment may contain `*`. */
+  path: string;
+  kind: CacheTargetKind;
+  risk: CacheRisk;
+  note?: string;
+  /** What the "open" button opens: the path itself, or the parent of a glob. */
+  openPath: string;
+}
+
+/** Files older than `days`; every target reports one entry per known threshold. */
+export interface CacheBucket {
+  days: number;
+  bytes: number;
+  files: number;
+}
+
+export interface CacheTargetReport extends CacheTargetSpec {
+  exists: boolean;
+  bytes: number;
+  files: number;
+  oldest?: string;
+  newest?: string;
+  buckets: CacheBucket[];
+  error?: string;
+}
+
+export interface CacheRecycleEntry {
+  originalPath: string;
+  storedPath: string;
+  kind: 'file' | 'dir';
+  bytes: number;
+  files: number;
+}
+
+/** One clean operation: what moved out of the agent directory, and where it now waits. */
+export interface CacheRecycleItem {
+  id: string;
+  createdAt: string;
+  operation: string;
+  targetIds: string[];
+  entries: CacheRecycleEntry[];
+  bytes: number;
+  files: number;
+}
+
+export interface CacheRecycleReport {
+  path: string;
+  items: CacheRecycleItem[];
+  bytes: number;
+  files: number;
+}
+
+export interface CacheReport {
+  targets: CacheTargetReport[];
+  recycle: CacheRecycleReport;
+  scannedAt: string;
+  durationMs: number;
+}
+
+export type CacheActionKind = 'clean' | 'restore' | 'purge';
+
+export interface CacheActionRequest {
+  action: CacheActionKind;
+  /** clean: the target ids to clean. */
+  ids?: string[];
+  /** clean: only files older than this many days move; 0 moves the whole target. */
+  olderThanDays?: number;
+  /** restore / purge: recycle ids; a purge without ids empties the whole bin. */
+  recycleIds?: string[];
+}
+
+export interface CacheActionResponse {
+  message: string;
+  movedBytes?: number;
+  movedFiles?: number;
+  recycleId?: string;
+  /** Paths a restore left in the bin because something else now occupies the original spot. */
+  skipped?: string[];
+  report: CacheReport;
+}
+

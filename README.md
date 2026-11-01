@@ -10,6 +10,7 @@
 - **模型从本地端点读取** — 默认请求 `http://127.0.0.1:15721/v1/models`，在「模型」页签里为三个 agent 分别选择模型；模型字段也带候选列表，支持手动输入。来源可用 `AGENT_MANAGER_MODELS_URL` 覆盖。
 - **MCP 单一源** — `~/.agents/mcp/servers.json` 是唯一源，矩阵按 agent 显示 已同步 / 有差异 / 缺失 / 孤儿 / 无效 / 不支持，支持收进源、同步到全部或单个 agent、从源删除或从 agent 移除。
 - **Hooks 单一源** — `~/.agents/hooks/hooks.json` 以事件为单位保存 Claude Code / Codex 的 hooks，矩阵显示 已同步 / 有差异 / 缺失 / 孤儿 / 不支持 / 不适用，可导入、同步、移除；pi 没有原生 hooks。
+- **缓存清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等）各占多少、多老，可按 1/7/30/90 天或整体清理；清理只是移到回收站（同一卷上是 `rename`，不复制内容），可原样恢复，只有「清空回收站」才真正释放磁盘。
 - **写前自动快照** — 每次改文件前先备份，页面上可回滚到任意一次操作；还原本身也会先建安全快照，误还原可再撤销。
 
 ### 设置页怎么用
@@ -26,6 +27,14 @@
 - 所有写操作都用同一个模态确认框：文案写明会改动的具体路径，删除类操作默认聚焦「取消」，`Esc` 取消；写入失败时错误显示在同一个弹框里，可直接重试。
 - `Ctrl+S` 保存：设置页保存全部改动，提示词页保存单一源；确认框打开时两个快捷键都不响应。
 - 「模型」页签用可搜索的选择器（↑/↓ + Enter 选、Esc 关），支持输入自定义 ID 或清空回退到 agent 默认值。
+
+### 缓存页怎么用
+
+- 表格按 agent 分组（Claude Code / Codex / pi 各有自己的颜色块），每组表头就是该 agent 的合计与「清理本组」；只列出真的有内容的位置，空目录不会摆在表里。
+- 顶部「清理范围」默认「全部文件」；选 1 / 7 / 30 / 90 天时表格会多出一列「N 天前」，行里的「清理」就只移动那一部分。每次清理都会先弹确认框写明具体路径、文件数与体积。
+- 清理是**移动**：内容进入 `data/recycle/`（可用 `AGENT_MANAGER_CACHE_RECYCLE` 改位置），行里的数字立刻下降，但内容还在；「回收站」面板里可一键恢复，原位置已被 agent 重新写入的文件不会被覆盖。
+- 只有「清空回收站」是永久删除；它先弹一个默认聚焦「取消」的确认框。
+- 标「含对话」的是会话记录与提示词历史（删了就没法 `--resume` 回看），标「可重建」的是缓存、日志、shell 快照与 `*.bak-*` 备份；配置文件（`settings.json`、`config.toml`、`AGENTS.md` 等）不在任何清理目标里。
 
 ## 运行
 
@@ -50,7 +59,7 @@ AgentManager.exe --data <dir> # 指定运行时数据目录
 AgentManager.exe --version    # 打印版本
 ```
 
-运行数据（`runtime.json`、`runtime.lock`、`app.log`、`snapshots/`）默认放在 exe 同级的 `data/`；该目录不可写时回退到 `%LOCALAPPDATA%\AgentManager`（POSIX 为 `~/.local/state/agent-manager`）。`npm run install:autostart` 可加入开机启动，`npm run uninstall:shortcut` 移除。
+运行数据（`runtime.json`、`runtime.lock`、`app.log`、`snapshots/`、`recycle/`）默认放在 exe 同级的 `data/`；该目录不可写时回退到 `%LOCALAPPDATA%\AgentManager`（POSIX 为 `~/.local/state/agent-manager`）。`npm run install:autostart` 可加入开机启动，`npm run uninstall:shortcut` 移除。
 
 ### 源码模式
 
@@ -77,17 +86,17 @@ npm run verify:ui  # 先用 npm run build 构建；用无头 Edge/Chrome 跑交�
 ## 目录
 
 ```
-server/     扫描、写操作、提示词、配置、设置读写、快照、启动器，以及 HTTP 路由
-web/        React 单页（左侧导航 + skills / 提示词 / 设置三个视图）
+server/     扫描、写操作、提示词、配置、设置读写、缓存与回收站、快照、启动器，以及 HTTP 路由
+web/        React 单页（左侧导航 + skills / 提示词 / 设置 / 缓存视图）
 shared/     服务端与前端共用的 API 契约
 schemas/    Claude Code / Codex / pi 的官方配置 schema（settings catalog 的来源）
 scripts/    独立 exe 构建/验证、schema catalog 生成与 Windows 快捷方式安装
 release/    独立程序产物（git 忽略）
-data/       快照与运行状态（git 忽略）
+data/       快照、回收站与运行状态（git 忽略）
 ```
 
 约定与决策记录在 `goal-and-requirements.md`、`architecture.md`、`server/SPEC*.md`。
 
 ## 边界
 
-只管用户级全局配置，不碰仓库内的项目级配置；settings / MCP 只读；只对接 Claude Code、Codex、pi；单机单用户，监听 `127.0.0.1`。
+只管用户级全局配置，不碰仓库内的项目级配置；缓存页只处理白名单里的会话记录与缓存，配置文件永不进入清理范围；只对接 Claude Code、Codex、pi；单机单用户，监听 `127.0.0.1`。

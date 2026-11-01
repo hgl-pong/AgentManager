@@ -43,11 +43,12 @@ parent: agent-manager
 - **内联表单关闭前先确认**：MCP 新增/编辑与 Hooks 新增/编辑面板都把「打开时的表单」序列化存在 `baselineRef` 里，`closeForm()` 对比当前值；有改动就用 `ask({danger:true})` 问一次，同时 `Esc` 与「取消」走同一个 `closeForm()`。没改动的表单直接关，不打扰。保存成功时先把基线与表单一起清掉，避免关面板时再问一次。
 - **模型选择用 `components/ModelPicker.tsx`**：按钮 + 可筛选列表，支持 ↑/↓/Enter/Esc、自定义 ID 与清除；原生 `<datalist>` 在 100+ 选项时不可用（看不到上下文长度与能力，弹层不受控）。
 - **Vite 锁在 7.x**：Vite 8（rolldown）无法解析 `react-dom/client` 里的相对 CJS 引用，构建失败；7.x 构建正常。
+- **缓存用回收站代替快照**：`server/cache.ts` 按白名单列出各 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions`/`.tmp`、`~/.pi/agent/sessions` 等），清理只是把内容 `rename` 进 `<dataDir>/recycle/<id>/`（只有跨卷才复制），所以「清理」可回滚，「清空回收站」才是唯一的不可逆动作。请求只带目标 id，路径永远由服务端清单决定；glob 匹配会跳过 `PROTECTED_NAMES` 里的活配置文件，链接一律不跟随。年龄分档 [1,7,30,90] 天在一次遍历里算完，sqlite 的 `-wal`/`-shm` 与主文件同组，组内任一文件较新就整组跳过。
 
 ## Invariants
 
 - 扫描不写任何文件；页面上的数字必须能在磁盘上复现。
-- 每个写操作都对应一条快照，快照里能还原到操作前的状态。
+- 每个写操作都可还原：配置类是快照，缓存类是回收站。
 - 配置文件永不写入；`POST /api/open` 只接受已知配置路径的白名单。
 - API 只监听 `127.0.0.1`，请求体上限 1MB。
 - 新增 agent 只需在 `server/index.ts` 的清单里加一条 `{key, label, root}`，扫描逻辑不动。
@@ -58,4 +59,4 @@ parent: agent-manager
 
 - 项目级目录扫描（仓库内的 `.claude/`、`AGENTS.md`）。
 - 多用户、远程访问、安装包、云端备份。
-- 快照的自动清理与保留策略。
+- 快照与回收站的自动清理与保留策略（`data/snapshots`、`data/recycle` 都由使用者手动释放）。

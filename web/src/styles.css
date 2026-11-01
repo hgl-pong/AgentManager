@@ -1116,6 +1116,114 @@ tbody tr.outside-source th {
   font-size: 13px;
 }
 
+/* ---------- cache page ---------- */
+
+/* The row header carries a label, a path and a note, so it keeps body text instead of the
+   mono name column the skills matrix uses. */
+.cache-table tbody th {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cache-path {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.cache-note {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.cache-scope {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.cache-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cache-filter .control {
+  width: auto;
+}
+
+/* Numbers line up under their centered headers; only the first column carries text. */
+.cache-table tbody td {
+  text-align: center;
+}
+
+.cache-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* One colour per agent, so a group is recognisable before reading its name. */
+.cache-agent::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--agent-color, var(--text-dim));
+}
+
+.cache-agent.agent-claude {
+  --agent-color: var(--warning);
+}
+
+.cache-agent.agent-codex {
+  --agent-color: var(--success);
+}
+
+.cache-agent.agent-pi {
+  --agent-color: var(--accent);
+}
+
+/* The group header is a row inside the table body, so its numbers stay in the same columns. */
+.cache-table tbody .cache-group-row th,
+.cache-table tbody .cache-group-row td {
+  border-top: 2px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.cache-table tbody .cache-group-row th {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cache-table tbody .cache-group-row th .cache-scope {
+  display: inline-block;
+  margin: 0 0 0 8px;
+}
+
+.cache-bytes {
+  font-weight: 600;
+}
+
+.cache-clean-list {
+  max-height: 200px;
+  margin: 8px 0;
+  padding-left: 20px;
+  overflow-y: auto;
+  font-size: 12.5px;
+}
+
+.cache-clean-list li {
+  margin: 3px 0;
+}
+
 /* ---------- settings page ---------- */
 
 .models-panel {

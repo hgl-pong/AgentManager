@@ -5,6 +5,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
+import { cacheTargets, runCacheAction, scanCache } from './cache.ts';
 import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
 import { buildMcpReport, runMcpAction } from './mcp.ts';
@@ -18,6 +19,8 @@ import { VERSION } from './version.ts';
 import { AppError } from '../shared/types.ts';
 import type {
   AgentSpec,
+  CacheActionRequest,
+  CacheTargetSpec,
   ConfigFileSpec,
   MatrixResponse,
   McpActionRequest,
@@ -63,6 +66,10 @@ export interface AppConfig {
   mcpSource: string;
   hooksSource: string;
   codexHooks: string;
+  /** Known cache/session locations the cache page may move into the recycle bin. */
+  cacheTargets: CacheTargetSpec[];
+  /** Where cleaned files wait until they are restored or purged. */
+  cacheRecycleRoot: string;
   openable: Set<string>;
 }
 
@@ -149,6 +156,10 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
   const mcpSource = join(home, '.agents', 'mcp', 'servers.json');
   const hooksSource = join(home, '.agents', 'hooks', 'hooks.json');
   const codexHooks = join(home, '.codex', 'hooks.json');
+  const cacheRecycleRoot = resolve(
+    process.env.AGENT_MANAGER_CACHE_RECYCLE ?? join(dataDir, 'recycle'),
+  );
+  const cacheSpecs = cacheTargets(home);
 
   const openable = new Set(
     [
@@ -162,6 +173,8 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
       mcpSource,
       hooksSource,
       codexHooks,
+      cacheRecycleRoot,
+      ...cacheSpecs.map((spec) => spec.openPath),
     ].map((path) => path.toLowerCase()),
   );
 
@@ -183,6 +196,8 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     mcpSource,
     hooksSource,
     codexHooks,
+    cacheTargets: cacheSpecs,
+    cacheRecycleRoot,
     openable,
   };
 }
@@ -382,6 +397,10 @@ function promptInput(config: AppConfig) {
   };
 }
 
+function cacheInput(config: AppConfig) {
+  return { targets: config.cacheTargets, recycleRoot: config.cacheRecycleRoot };
+}
+
 async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -538,6 +557,18 @@ async function handleRequest(
     const body = request.method === 'POST' ? (await readJson(request)) as unknown as HookActionRequest : undefined;
     const result = body === undefined ? buildHooksReport(input)
       : await writes.run(() => runHooksAction(input, body));
+    json(response, 200, result);
+    return;
+  }
+
+  if (pathname === '/api/cache' && request.method === 'GET') {
+    json(response, 200, scanCache(cacheInput(config)));
+    return;
+  }
+
+  if (pathname === '/api/cache' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as CacheActionRequest;
+    const result = await writes.run(() => runCacheAction(cacheInput(config), body));
     json(response, 200, result);
     return;
   }

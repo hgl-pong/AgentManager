@@ -23,6 +23,7 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 - **skills**：`~/.agents/skills` 里的 6 个 skill 只被链进了 `~/.claude/skills`（Windows junction）；`~/.codex/skills` 是另外 13 个 skill，与源零交集；`~/.pi/agent/skills` 下只有一个 `vision-support`，而它是指向不存在目标的悬空 junction。某个 skill 到底在哪个 agent 里生效、哪些链接已经断了，只能逐目录 `ls` 猜，而且不开就不看出来。
 - **全局提示词**：`~/.claude/CLAUDE.md`（2433 字节）与 `~/.codex/AGENTS.md`（2398 字节）内容近乎相同却各自演化。改一条规则要改两处，漏一处就出现跨 agent 行为不一致。
 - **配置**：`settings.json` / `config.toml` / `mcps.json` 分散在三个目录，没有一处能看出同一个 MCP server 在哪几个 agent 里配过。
+- **磁盘**：`~/.claude/projects`（约 500MB 会话）与 `~/.pi/agent/sessions`（约 370MB）、`~/.codex/.tmp`（约 370MB）只有长没缩的办法——唯一的工具是 `~/.claude` 里的手写 `clean-claude-cache.ps1`：靠自己记着跑，删完不能恢复，而且只管 Claude。
 
 结果：漂移是默认状态，只有在某个 agent 行为不对时才会被发现。新增一个 skill 要在每个 agent 目录里手工重建一遍，漏做不会有任何提示。
 
@@ -38,6 +39,7 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 6. **独立启动** — `npm run build:exe` 产出单个 `AgentManager.exe`（内嵌前端与 Node 运行时），双击即用；`--status` / `--stop` 管理后台实例，快捷方式经 `wscript` 启动不弹控制台。
 7. **MCP 单一源** — `~/.agents/mcp/servers.json` 是唯一源；矩阵按 agent 显示 已同步 / 有差异 / 缺失 / 孤儿 / 无效 / 不支持，支持收进源、同步、从源或 agent 移除。Claude/Codex/pi 的格式差异在写回时映射，未知字段保留。
 8. **Hooks 单一源** — `~/.agents/hooks/hooks.json` 以事件为单位保存 Claude/Codex 的 matcher 组与 handler；矩阵显示同步状态，支持导入、同步、移除；pi 没有原生 hooks。
+9. **缓存与会话清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等），显示占用、文件数与 1/7/30/90 天的年龄分布；清理是「移进回收站」（同一卷上就是 `rename`），可在界面里原样恢复，只有「清空回收站」才真正释放磁盘。
 
 ## Non-Goals
 
@@ -46,6 +48,7 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 - 不服务 Claude Code、Codex、pi 之外的 agent（Gemini CLI、Copilot CLI、Kimi Code、CodeMaker 明确不做）。
 - 不做多用户、安装包、跨机器同步或云备份：单机、单用户、`127.0.0.1`。
 - 不代跑 agent：不启动会话、不代理模型请求。
+- 不做定时或自动清理：缓存只在界面里手动清理，回收站只在手动「清空」时释放；不内置保留期策略。
 
 ## Tech Notes
 

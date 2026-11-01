@@ -1,4 +1,7 @@
 import type {
+  CacheActionRequest,
+  CacheActionResponse,
+  CacheReport,
   ConfigReport,
   HealthResponse,
   HookActionRequest,
@@ -93,6 +96,8 @@ export const api = {
   open: (path: string) => request<OpenResponse>('/api/open', post({ path })),
   health: (signal?: AbortSignal) => request<HealthResponse>('/api/health', { signal }),
   quit: () => request<{ stopping: boolean }>('/api/app/quit', post({})),
+  cache: (signal?: AbortSignal) => request<CacheReport>('/api/cache', { signal }),
+  cacheAction: (body: CacheActionRequest) => request<CacheActionResponse>('/api/cache', post(body)),
   settingsCatalog: (signal?: AbortSignal) =>
     request<SettingsCatalog>('/api/settings/catalog', { signal }),
   settings: (signal?: AbortSignal) => request<SettingsReport>('/api/settings', { signal }),

@@ -9,6 +9,7 @@ import type {
   SettingsReport,
 } from '../../shared/types.ts';
 import { McpView } from './views/McpView.tsx';
+import { CacheView } from './views/CacheView.tsx';
 import { HooksView } from './views/HooksView.tsx';
 import { PromptsView } from './views/PromptsView.tsx';
 import type { PromptsHandle } from './views/PromptsView.tsx';
@@ -50,6 +51,12 @@ const TABS = [
     label: '设置',
     title: '设置',
     lede: '编辑各 agent 的用户级配置与 MCP。',
+  },
+  {
+    key: 'cache',
+    label: '缓存',
+    title: '缓存',
+    lede: '查看各 agent 的会话记录与缓存占用，清理后先从回收站里保留，可随时恢复。',
   },
 ] as const;
 
@@ -419,6 +426,7 @@ export default function App() {
               handleRef={settingsHandle}
             />
           )}
+          {tab === 'cache' && <CacheView version={dataVersion} />}
 
           <SnapshotsPanel version={snapshotVersion} onRestored={restored} />
         </main>

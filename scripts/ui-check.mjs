@@ -6,7 +6,7 @@
 //
 // Not part of `npm test`: it needs a local Edge/Chrome and takes ~20s.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -40,6 +40,16 @@ writeFileSync(join(home, '.pi', 'agent', 'AGENTS.md'), 'pi prompt body');
 writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ model: 'gpt-5.1', permissions: { allow: ['Read'] } }, null, 2));
 writeFileSync(join(home, '.codex', 'config.toml'), 'model = "gpt-5.1"\n');
 writeFileSync(join(home, '.pi', 'agent', 'settings.json'), JSON.stringify({ defaultModel: 'gpt-5.1' }, null, 2));
+
+// Cache page fixtures: one session old enough for the 30-day scope, plus a regenerable cache blob.
+mkdirSync(join(home, '.claude', 'projects', 'proj'), { recursive: true });
+writeFileSync(join(home, '.claude', 'projects', 'proj', 'old-session.jsonl'), 'old session body\n');
+mkdirSync(join(home, '.claude', 'cache'), { recursive: true });
+writeFileSync(join(home, '.claude', 'cache', 'blob.bin'), 'blob\n');
+writeFileSync(join(home, '.claude', 'cache', 'old.bin'), 'old blob\n');
+const OLD = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+utimesSync(join(home, '.claude', 'projects', 'proj', 'old-session.jsonl'), OLD, OLD);
+utimesSync(join(home, '.claude', 'cache', 'old.bin'), OLD, OLD);
 
 const PORT = 7900 + Math.floor(Math.random() * 200);
 const CDP = 9300 + Math.floor(Math.random() * 200);
@@ -871,18 +881,228 @@ try {
   const hookClosed = await page.eval(`return !document.querySelector('.hook-form');`);
   check('confirming closes the hooks form', hookClosed);
 
+  // 18. Cache page: targets are grouped per agent, the scope select drives the numbers, and every
+  // clean is undoable from the recycle bin.
+  await page.eval(`document.querySelector('#nav-cache').click(); return true;`);
+  await page.waitForFn(`location.hash === '#cache' && document.querySelector('.toolbar select')`);
+  await page.waitForFn(
+    `[...document.querySelectorAll('table tbody tr')].some((row) => row.innerText.includes('会话记录'))`,
+  );
+
+  const sessionRow = () => page.eval(`
+    const row = [...document.querySelectorAll('table tbody tr')].find((r) => r.innerText.includes('会话记录'));
+    if (!row) return null;
+    return {
+      cells: [...row.querySelectorAll('td')].map((cell) => cell.innerText),
+      header: [...document.querySelectorAll('table thead th')].map((th) => th.innerText),
+    };
+  `);
+
+  const setScope = (value) => page.eval(`
+    const select = document.querySelector('.toolbar select');
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+    setter.call(select, '${value}');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  `);
+
+  const initial = await sessionRow();
+  check(
+    'cache rows show total size and files in one cell',
+    Boolean(initial) &&
+      initial.cells[0]?.includes('17 B') === true &&
+      initial.cells[0]?.includes('1 个文件') === true &&
+      !initial.header.includes('30 天前') &&
+      initial.header.includes('占用'),
+    JSON.stringify(initial),
+  );
+
+  const grouped = await page.eval(`return {
+    groups: document.querySelectorAll('tbody.cache-group').length,
+    agents: [...document.querySelectorAll('.cache-group-row .cache-agent')].map((node) => node.textContent),
+    groupButtons: [...document.querySelectorAll('.cache-group-row button')].map((node) => node.textContent.trim()),
+  };`);
+  check(
+    'cache table groups its targets by agent',
+    grouped.groups === 1 && grouped.agents.includes('Claude Code') && grouped.groupButtons.includes('清理本组'),
+    JSON.stringify(grouped),
+  );
+
+  await setScope(30);
+  await sleep(200);
+  const scoped = await sessionRow();
+  check(
+    'picking 30 days adds a dedicated range column',
+    Boolean(scoped) && scoped.header.includes('30 天前') && scoped.cells[1]?.includes('1 个文件') === true,
+    JSON.stringify(scoped),
+  );
+
+  await setScope(0);
+  await sleep(200);
+  const allScope = await sessionRow();
+  check(
+    'choosing 全部 drops the range column again',
+    Boolean(allScope) && !allScope.header.includes('30 天前') && allScope.cells.length === 3,
+    JSON.stringify(allScope),
+  );
+
+  const cleanClicked = await page.eval(`
+    const row = [...document.querySelectorAll('table tbody tr')].find((r) => r.innerText.includes('会话记录'));
+    const button = row && [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === '清理');
+    if (!button) return false;
+    button.click();
+    return true;
+  `);
+  check('cache clean button exists', cleanClicked);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const cacheDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.querySelector('.confirm-dialog-body')?.textContent ?? '',
+      focused: document.activeElement?.textContent ?? '',
+      danger: [...node.querySelectorAll('button')].some((b) => b.classList.contains('danger')),
+    };
+  `);
+  check(
+    'cache clean asks first, defaults to cancel and names the path',
+    cacheDialog.title === '清理缓存' &&
+      cacheDialog.focused === '取消' &&
+      cacheDialog.danger &&
+      cacheDialog.body.includes('.claude') &&
+      cacheDialog.body.includes('回收站'),
+    JSON.stringify(cacheDialog),
+  );
+  await page.eval(`
+    [...document.querySelectorAll('dialog.confirm-dialog button')]
+      .find((b) => b.textContent.includes('移到回收站')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.notice')?.textContent.includes('回收站')`);
+  const afterClean = await page.eval(`return {
+    rowGone: ![...document.querySelectorAll('table tbody tr')].some((r) => r.innerText.includes('会话记录')),
+    recycleHeader: document.querySelector('.snapshots .link-button')?.textContent ?? '',
+    binItems: document.querySelectorAll('.snapshot-list li').length,
+  };`);
+  check(
+    'a clean moves the target into the bin and drops its row',
+    afterClean.rowGone && afterClean.recycleHeader.includes('1 项') && afterClean.binItems === 1,
+    JSON.stringify(afterClean),
+  );
+
+  // Restoring puts it back; the dialog's own confirm button is labelled 恢复 as well.
+  await page.eval(`
+    const button = [...document.querySelectorAll('.snapshot-list li button')]
+      .find((b) => b.textContent.trim() === '恢复');
+    if (!button) return false;
+    button.click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  await page.eval(`
+    [...document.querySelectorAll('dialog.confirm-dialog button')]
+      .find((b) => b.textContent.includes('恢复')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.notice')?.textContent.includes('已恢复')`);
+  const afterRestore = await page.eval(`return {
+    rowBack: [...document.querySelectorAll('table tbody tr')].some((r) => r.innerText.includes('会话记录')),
+    binItems: document.querySelectorAll('.snapshot-list li').length,
+  };`);
+  check(
+    'restoring from the bin brings the target back',
+    afterRestore.rowBack && afterRestore.binItems === 0,
+    JSON.stringify(afterRestore),
+  );
+
+  // A whole agent group is one action and one recycle item, so it undoes in one step.
+  await page.eval(`
+    [...document.querySelectorAll('.cache-group-row button')]
+      .find((b) => b.textContent.trim() === '清理本组').click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const groupDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      paths: [...node.querySelectorAll('.cache-clean-list code')].map((code) => code.textContent),
+      focused: document.activeElement?.textContent ?? '',
+    };
+  `);
+  check(
+    'a group clean lists every path it will move',
+    groupDialog.title.includes('Claude Code') && groupDialog.paths.length >= 2 && groupDialog.focused === '取消',
+    JSON.stringify(groupDialog),
+  );
+  await page.eval(`
+    [...document.querySelectorAll('dialog.confirm-dialog button')]
+      .find((b) => b.textContent.includes('移到回收站')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.snapshots .link-button')?.textContent.includes('1 项')`);
+  const afterGroup = await page.eval(`return {
+    table: Boolean(document.querySelector('table.cache-table')),
+    emptyText: document.body.innerText.includes('本机没有发现已知的缓存目录'),
+    binItems: document.querySelectorAll('.snapshot-list li').length,
+    binText: document.querySelector('.snapshot-list li')?.innerText ?? '',
+  };`);
+  check(
+    'a group clean moves every stale target in one recycle item',
+    !afterGroup.table && afterGroup.emptyText && afterGroup.binItems === 1 && afterGroup.binText.includes('3 个文件'),
+    JSON.stringify(afterGroup),
+  );
+
+  // Emptying the bin is the only destructive step.
+  await page.eval(`
+    [...document.querySelectorAll('.snapshots header button')]
+      .find((b) => b.textContent.includes('清空回收站')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const purgeDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      focused: document.activeElement?.textContent ?? '',
+      body: node.querySelector('.confirm-dialog-body')?.textContent ?? '',
+    };
+  `);
+  check(
+    'emptying the bin is destructive and defaults to cancel',
+    purgeDialog.title === '清空回收站' && purgeDialog.focused === '取消' && purgeDialog.body.includes('无法恢复'),
+    JSON.stringify(purgeDialog),
+  );
+  await page.eval(`
+    [...document.querySelectorAll('dialog.confirm-dialog button')]
+      .find((b) => b.textContent.includes('清空并释放空间')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.notice')?.textContent.includes('已彻底删除')`);
+  const afterPurge = await page.eval(`return {
+    recycleHeader: document.querySelector('.snapshots .link-button')?.textContent ?? '',
+    binItems: document.querySelectorAll('.snapshot-list li').length,
+  };`);
+  check(
+    'purging the bin leaves nothing behind',
+    afterPurge.recycleHeader.includes('0 项') && afterPurge.binItems === 0,
+    JSON.stringify(afterPurge),
+  );
+
   const errors = page.consoleErrors.filter((entry) => !entry.includes('favicon'));
   check('no runtime console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
   // 11. Snapshot restore is destructive: dialog opens with cancel focused, and Escape closes it.
+  // The cache page renders its own `.snapshots` section above the panel, so target the last one.
   await page.eval(`
-    const toggle = [...document.querySelectorAll('.snapshots header button')][0];
-    toggle.click();
+    const panel = [...document.querySelectorAll('.snapshots')].at(-1);
+    panel.querySelector('header button').click();
     return true;
   `);
   await sleep(500);
   const snapshotButton = await page.eval(`
-    const button = document.querySelector('.snapshot-list button');
+    const panel = [...document.querySelectorAll('.snapshots')].at(-1);
+    const button = panel.querySelector('.snapshot-list button');
     if (!button) return false;
     button.click();
     return true;
