@@ -54,6 +54,7 @@ utimesSync(join(home, '.claude', 'cache', 'old.bin'), OLD, OLD);
 const PORT = 7900 + Math.floor(Math.random() * 200);
 const CDP = 9300 + Math.floor(Math.random() * 200);
 const MODELS_PORT = PORT + 500;
+const STORE_PORT = PORT + 600;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -139,6 +140,7 @@ const server = spawn(process.execPath, ['server/index.ts', '--data', join(root, 
     ...process.env,
     AGENT_MANAGER_HOME: home,
     AGENT_MANAGER_MODELS_URL: `http://127.0.0.1:${MODELS_PORT}/v1`,
+    AGENT_MANAGER_STORE_URL: `http://127.0.0.1:${STORE_PORT}`,
   },
   stdio: 'ignore',
 });
@@ -154,6 +156,93 @@ const edge = spawn(BROWSER, [
 ], { stdio: 'ignore' });
 
 let page;
+/** A stored-only ZIP for the fake registry. */
+function storedZip(files) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const data = Buffer.from(text, 'utf8');
+    const nameBytes = Buffer.from(name, 'utf8');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    locals.push(local, nameBytes, data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(central, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
+/** The three skillstore.io routes the store page uses, answered from this machine. */
+const storeStub = createServer((request, response) => {
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+  if (url.pathname.endsWith('/download')) {
+    response.writeHead(200, { 'content-type': 'application/zip' });
+    response.end(storedZip({ 'latte/SKILL.md': '# Latte\n\nBrew it.\n' }));
+    return;
+  }
+  if (url.pathname.endsWith('/manifest')) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        kind: 'skill',
+        skill: { slug: 'acme-latte', name: 'latte' },
+        artifact: { type: 'skill-zip', url: `http://127.0.0.1:${STORE_PORT}/api/skills/acme-latte/download` },
+      }),
+    );
+    return;
+  }
+  const skill = {
+    slug: 'acme-latte',
+    displayName: 'latte',
+    description: 'Brew a latte order.',
+    category: 'office',
+    riskLevel: 'safe',
+    license: 'MIT',
+    repo: 'https://github.com/acme/latte',
+    author: 'acme',
+    githubUsername: 'acme',
+    qualityScore: 80,
+    hasScripts: true,
+    needsNetwork: false,
+    authorVersion: '0.1.0',
+    updatedAt: '2026-10-25T11:56:50.970Z',
+    stats: { viewCount: 3, downloadCount: 5, favoriteCount: 1 },
+  };
+  response.writeHead(200, { 'content-type': 'application/json' });
+  // A second page reports a bigger total, so the label proves the page reached the registry.
+  const page = Number(url.searchParams.get('page') ?? '1');
+  const total = page === 2 ? 80 : 50;
+  response.end(
+    JSON.stringify({
+      data: [skill],
+      total,
+      pagination: { page, limit: 24, total, totalPages: Math.ceil(total / 24) },
+    }),
+  );
+});
+await new Promise((resolve) => storeStub.listen(STORE_PORT, '127.0.0.1', resolve));
 const modelStub = createServer((request, response) => {
   if (request.url?.startsWith('/v1/models')) {
     response.writeHead(200, { 'content-type': 'application/json' });
@@ -1089,6 +1178,142 @@ try {
     JSON.stringify(afterPurge),
   );
 
+  // 10b. The store page talks to the (fake) registry, installs into the source and links agents.
+  await page.eval(`location.hash = 'store'; return true;`);
+  await page.waitForFn(`document.querySelectorAll('.store-card').length > 0`);
+  const storeShape = await page.eval(`
+    const card = document.querySelector('.store-card');
+    return {
+      title: card.querySelector('h3')?.textContent ?? '',
+      owner: card.querySelector('.store-owner')?.textContent ?? '',
+      action: card.querySelector('.store-action')?.textContent ?? '',
+      targets: document.querySelectorAll('.store-targets .check').length,
+    };
+  `);
+  check(
+    'store renders registry rows with an install action',
+    storeShape.title === 'latte' &&
+      storeShape.owner === 'acme/acme-latte' &&
+      storeShape.action.includes('安装') &&
+      storeShape.action.includes('Install') &&
+      storeShape.targets === 3,
+    JSON.stringify(storeShape),
+  );
+
+  await page.eval(`
+    const input = document.querySelector('.store-search input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'coffee');
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    document.querySelector('.store-search').requestSubmit();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.store-page .meta')?.textContent.includes('coffee')`);
+  check('store search re-queries the registry', true);
+
+  const pager = await page.eval(`
+    const label = document.querySelector('.store-pager-label')?.textContent.trim() ?? '';
+    const buttons = [...document.querySelectorAll('.store-pager button')];
+    return { label, prev: buttons[0]?.disabled ?? null, next: buttons[1]?.disabled ?? null };
+  `);
+  check(
+    'store paginates instead of stopping at one page',
+    pager.label.startsWith('第 1 / 3 页') && pager.prev === true && pager.next === false,
+    JSON.stringify(pager),
+  );
+
+  await page.eval(`document.querySelectorAll('.store-pager button')[1].click(); return true;`);
+  await page.waitForFn(`document.querySelector('.store-pager-label')?.textContent.includes('第 2 / 4 页')`);
+  const secondPage = await page.eval(`
+    const buttons = [...document.querySelectorAll('.store-pager button')];
+    return {
+      label: document.querySelector('.store-pager-label')?.textContent.trim() ?? '',
+      cards: document.querySelectorAll('.store-card').length,
+      prev: buttons[0]?.disabled ?? null,
+    };
+  `);
+  check(
+    'the next page is fetched from the registry',
+    secondPage.label.startsWith('第 2 / 4 页') && secondPage.cards === 1 && secondPage.prev === false,
+    JSON.stringify(secondPage),
+  );
+
+  await page.eval(`document.querySelectorAll('.store-pager button')[0].click(); return true;`);
+  await page.waitForFn(`document.querySelector('.store-pager-label')?.textContent.includes('第 1 / 3 页')`);
+  check('the previous page goes back', true);
+
+  await page.eval(`document.querySelector('.store-action').click(); return true;`);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const storeDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.querySelector('.confirm-dialog-body')?.innerText ?? '',
+      focused: document.activeElement?.textContent ?? '',
+    };
+  `);
+  check(
+    'store install names the destination and the agents it will link',
+    storeDialog.title.includes('latte') &&
+      storeDialog.body.includes(join(home, '.agents', 'skills', 'latte')) &&
+      storeDialog.body.includes('Claude Code') &&
+      storeDialog.body.includes('Codex') &&
+      storeDialog.body.includes('acme/acme-latte'),
+    JSON.stringify(storeDialog),
+  );
+
+  await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    [...node.querySelectorAll('button')].find((b) => b.textContent.includes('安装')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.store-page .notice')?.textContent.includes('已安装 latte')`);
+  const installedFile = join(home, '.agents', 'skills', 'latte', 'SKILL.md');
+  check(
+    'store install writes the skill into the source and links agents',
+    existsSync(installedFile) && readFileSync(installedFile, 'utf8').includes('Brew it'),
+    installedFile,
+  );
+  await page.waitForFn(`document.querySelector('.store-action')?.textContent.trim() === '源里已有 In source'`);
+  check('an installed skill is marked in the source', true);
+
+  // 10c. The language switch re-renders the whole page in English and back to bilingual.
+  await page.eval(`
+    const button = [...document.querySelectorAll('.store-lang button')].find((b) => b.textContent.includes('English'));
+    button.click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.store-action')?.textContent.trim() === 'In source'`);
+  const englishShape = await page.eval(`
+    return {
+      action: document.querySelector('.store-action')?.textContent.trim() ?? '',
+      search: document.querySelector('.store-search button[type=submit]')?.textContent.trim() ?? '',
+      targets: document.querySelector('.store-targets-label')?.textContent.trim() ?? '',
+    };
+  `);
+  check(
+    'the language switch renders English labels',
+    englishShape.action === 'In source' &&
+      englishShape.search === 'Search' &&
+      englishShape.targets === 'Link to',
+    JSON.stringify(englishShape),
+  );
+
+  await page.eval(`
+    document.querySelectorAll('.store-lang button')[2].click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.store-search button[type=submit]')?.textContent.includes('搜索')`);
+  const bilingual = await page.eval(`return document.querySelector('.store-search button[type=submit]')?.textContent.trim() ?? '';`);
+  check('the bilingual mode shows both languages at once', bilingual === '搜索 Search', bilingual);
+
+  await page.eval(`document.querySelector('#nav-skills').click(); return true;`);
+  await page.waitForFn(`document.querySelector('table')?.innerText.includes('latte')`);
+  const storeRow = await page.eval(`
+    const row = [...document.querySelectorAll('table tbody tr')].find((r) => r.innerText.includes('latte'));
+    return row ? row.innerText.replace(/\\s+/g, ' ') : '';
+  `);
+  check('the store install shows up as linked in the skills matrix', storeRow.includes('链接'), storeRow);
   const errors = page.consoleErrors.filter((entry) => !entry.includes('favicon'));
   check('no runtime console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
@@ -1143,6 +1368,7 @@ try {
   edge.kill();
   server.kill();
   modelStub.close();
+  storeStub.close();
   if (page) page.socket.close();
   await sleep(400);
 }

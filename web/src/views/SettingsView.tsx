@@ -1590,9 +1590,10 @@ export function SettingsView({
               className={selected ? 'agent-tab is-active' : 'agent-tab'}
               onClick={() => void chooseAgent(entry.key)}
             >
+              <span className={detected ? 'agent-dot is-detected' : 'agent-dot'} aria-hidden="true" />
               <span className="agent-name">{entry.label}</span>
-              <span className="agent-meta">
-                {detected ? '已检测' : '未检测'} · {files.length} 个文件
+              <span className="pkg-count" title={`${files.length} 个配置文件`}>
+                {files.length} 个文件
               </span>
             </button>
           );

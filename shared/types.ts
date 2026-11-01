@@ -575,6 +575,88 @@ export interface CacheReport {
   durationMs: number;
 }
 
+// ---- skill store ----
+
+/** A skill the registry offers. `id` is the registry slug and stays stable across pages. */
+export interface StoreSkill {
+  id: string;
+  slug: string;
+  /** Publisher handle (GitHub user or organization). */
+  owner: string;
+  /** Skill name, which becomes the directory name inside the source. */
+  name: string;
+  summary: string;
+  category?: string;
+  /** Stated risk of running the skill; the registry audits its scripts. */
+  risk?: 'safe' | 'medium' | 'high' | 'critical';
+  license?: string;
+  repository?: string;
+  quality?: number;
+  hasScripts?: boolean;
+  needsNetwork?: boolean;
+  downloads: number;
+  favorites: number;
+  version?: string;
+  updatedAt?: string;
+  /** True when the source already holds a skill directory with this name (or the slug). */
+  inSource: boolean;
+}
+
+/** `featured` is the registry's own ordering; `search` is an answer to a query. */
+export type StoreListing = 'featured' | 'search';
+
+export interface StoreReport {
+  provider: string;
+  /** The registry base URL that answered. */
+  endpoint: string;
+  query: string;
+  listing: StoreListing;
+  /** 1-based page of the registry result set that `items` holds. */
+  page: number;
+  limit: number;
+  totalPages: number;
+  /** How many skills the registry says match, which can be more than `items`. */
+  total: number;
+  fetchedAt: string;
+  cached: boolean;
+  /** True when the registry failed and an older answer is being shown. */
+  stale?: boolean;
+  error?: string;
+  sourcePath: string;
+  items: StoreSkill[];
+}
+
+export interface StoreInstallRequest {
+  owner: string;
+  slug: string;
+  /** Directory name inside the source; defaults to the slug. */
+  name?: string;
+  /** Agents to link after installing; omitted means "install only". */
+  agents?: string[];
+}
+
+export interface StoreInstallLink {
+  agent: string;
+  label: string;
+  state: 'linked' | 'skipped' | 'failed';
+  message: string;
+}
+
+export interface StoreInstallReport {
+  message: string;
+  name: string;
+  path: string;
+  files: number;
+  bytes: number;
+  snapshotId: string;
+  links: StoreInstallLink[];
+  warnings: string[];
+}
+
+export interface StoreInstallResponse extends StoreInstallReport {
+  matrix: MatrixResponse;
+}
+
 export type CacheActionKind = 'clean' | 'restore' | 'purge';
 
 export interface CacheActionRequest {

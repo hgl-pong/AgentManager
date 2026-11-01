@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -19,6 +19,8 @@ import type {
   SettingsReport,
   SettingsSaveResult,
   SnapshotManifest,
+  StoreInstallResponse,
+  StoreReport,
 } from '../shared/types.ts';
 
 // Picked per run: the launcher keeps state under its data dir, so another instance on the
@@ -40,6 +42,67 @@ function freePort(): Promise<number> {
 
 let home: string;
 let server: ChildProcess;
+let registry: ReturnType<typeof createHttpServer>;
+const registryRequests: string[] = [];
+
+/** A stored-only ZIP, enough to exercise the download → extract path end to end. */
+function storedZip(files: Record<string, string>): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const data = Buffer.from(text, 'utf8');
+    const nameBytes = Buffer.from(name, 'utf8');
+
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    locals.push(local, nameBytes, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(central, nameBytes);
+
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
+const REGISTRY_SKILL = {
+  slug: 'acme-latte',
+  displayName: 'latte',
+  description: 'Brew a latte order.',
+  category: 'office',
+  riskLevel: 'safe',
+  license: 'MIT',
+  repo: 'https://github.com/acme/latte',
+  author: 'acme',
+  githubUsername: 'acme',
+  qualityScore: 80,
+  hasScripts: false,
+  needsNetwork: false,
+  authorVersion: '0.1.0',
+  updatedAt: '2026-10-25T11:56:50.970Z',
+  stats: { viewCount: 3, downloadCount: 5, favoriteCount: 1 },
+};
 
 function writeSkill(dir: string, body: string): void {
   mkdirSync(dir, { recursive: true });
@@ -117,13 +180,48 @@ before(async () => {
 
   PORT = await freePort();
   BASE = `http://127.0.0.1:${PORT}`;
+
+  // A stand-in registry on this machine, so the store page is exercised without the real network.
+  const registryPort = await freePort();
+  registry = createHttpServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    registryRequests.push(url.pathname + url.search);
+    if (url.pathname.endsWith('/download')) {
+      const body = storedZip({ 'latte/SKILL.md': '# Latte\n\nBrew it.\n' });
+      response.writeHead(200, { 'content-type': 'application/zip' });
+      response.end(body);
+      return;
+    }
+    if (url.pathname.endsWith('/manifest')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          kind: 'skill',
+          skill: { slug: 'acme-latte', name: 'latte' },
+          artifact: {
+            type: 'skill-zip',
+            url: `http://127.0.0.1:${registryPort}/api/skills/acme-latte/download`,
+          },
+        }),
+      );
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ data: [REGISTRY_SKILL], total: 1 }));
+  });
+  await new Promise<void>((resolve) => registry.listen(registryPort, '127.0.0.1', resolve));
+
   // `--data` and `--no-window` keep the spawned launcher off the repo's state dir and off the
   // screen; without them a running instance would be reused and this suite would talk to it.
   server = spawn(
     process.execPath,
     ['server/index.ts', '--data', join(home, 'data'), '--port', String(PORT), '--no-window'],
     {
-      env: { ...process.env, AGENT_MANAGER_HOME: home },
+      env: {
+        ...process.env,
+        AGENT_MANAGER_HOME: home,
+        AGENT_MANAGER_STORE_URL: `http://127.0.0.1:${registryPort}`,
+      },
       stdio: 'ignore',
     },
   );
@@ -142,6 +240,7 @@ before(async () => {
 
 after(() => {
   server?.kill();
+  registry?.close();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -601,4 +700,64 @@ test('settings files are in the open allowlist', () => {
     assert.ok(config.openable.has(file.path.toLowerCase()));
     if (file.hostPath) assert.ok(config.openable.has(file.hostPath.toLowerCase()));
   }
+});
+
+test('the store lists and searches the registry through the API', async () => {
+  const featured = await call<StoreReport>('/api/store');
+  assert.equal(featured.provider, 'skillstore.io');
+  assert.equal(featured.listing, 'featured');
+  assert.equal(featured.sourcePath, join(home, '.agents', 'skills'));
+  assert.deepEqual(
+    featured.items.map((item) => item.name),
+    ['latte'],
+  );
+  assert.equal(featured.items[0]?.inSource, false);
+  assert.ok(registryRequests.some((url) => url.startsWith('/api/skills?limit=12&page=1')));
+
+  const search = await call<StoreReport>('/api/store?q=coffee');
+  assert.equal(search.listing, 'search');
+  assert.equal(search.query, 'coffee');
+  assert.ok(registryRequests.some((url) => url.startsWith('/api/skills?limit=12&page=1&q=coffee')));
+});
+
+test('installing from the store links agents, marks the row and is snapshotted', async () => {
+  const result = await call<StoreInstallResponse>('/api/store/install', {
+    owner: 'acme',
+    slug: 'acme-latte',
+    agents: ['claude', 'codex'],
+  });
+
+  assert.equal(result.name, 'latte');
+  assert.match(result.message, /已安装 latte/);
+  assert.equal(result.links.filter((link) => link.state === 'linked').length, 2);
+  assert.ok(registryRequests.includes('/api/skills/acme-latte/manifest'));
+  assert.ok(registryRequests.some((url) => url.startsWith('/api/skills/acme-latte/download')));
+
+  const installedPath = join(home, '.agents', 'skills', 'latte');
+  assert.equal(readFileSync(join(installedPath, 'SKILL.md'), 'utf8'), '# Latte\n\nBrew it.\n');
+  for (const agent of ['claude', 'codex']) {
+    assert.equal(realpathSync(join(home, `.${agent}`, 'skills', 'latte')), realpathSync(installedPath));
+  }
+  assert.equal(result.matrix.rows.find((row) => row.name === 'latte')?.cells.claude?.state, 'linked');
+
+  const listed = await call<StoreReport>('/api/store');
+  assert.equal(listed.items[0]?.inSource, true);
+
+  const conflict = await postStatus('/api/store/install', { owner: 'acme', slug: 'acme-latte' });
+  assert.equal(conflict, 409);
+
+  const snapshots = await call<SnapshotManifest[]>('/api/snapshots');
+  const snapshot = snapshots.find((entry) => entry.operation === 'install acme/latte');
+  assert.ok(snapshot, 'the install is snapshotted');
+  assert.deepEqual(
+    snapshot.created.sort(),
+    [installedPath, join(home, '.claude', 'skills', 'latte'), join(home, '.codex', 'skills', 'latte')].sort(),
+  );
+});
+
+test('the store install rejects unknown agents and unsafe slugs', async () => {
+  const unknownAgent = await postStatus('/api/store/install', { owner: 'acme', slug: 'espresso', agents: ['nope'] });
+  assert.equal(unknownAgent, 400);
+  const unsafe = await postStatus('/api/store/install', { owner: 'acme', slug: '../escape' });
+  assert.equal(unsafe, 400);
 });

@@ -26,11 +26,16 @@ import type {
   SkillActionRequest,
   SkillActionResponse,
   SnapshotManifest,
+  StoreInstallRequest,
+  StoreInstallResponse,
+  StoreReport,
 } from '../../shared/types.ts';
 
 export type { HealthResponse, OpenResponse } from '../../shared/types.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+/** The registry is a remote service with its own retries, so store calls wait longer than local ones. */
+const STORE_TIMEOUT_MS = 60_000;
 
 /** An HTTP failure that keeps the status code, so 409 conflicts can be handled explicitly. */
 export class HttpError extends Error {
@@ -51,8 +56,8 @@ export function isAbortError(reason: unknown): boolean {
   return reason instanceof DOMException && reason.name === 'AbortError';
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs);
   const external = init?.signal;
   const signal = external ? AbortSignal.any([external, timeout]) : timeout;
 
@@ -68,7 +73,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return body as T;
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'TimeoutError') {
-      throw new Error(`请求超时（${REQUEST_TIMEOUT_MS / 1000} 秒内没有响应），请确认后台服务仍在运行`);
+      throw new Error(`请求超时（${timeoutMs / 1000} 秒内没有响应），请确认后台服务仍在运行`);
     }
     throw reason;
   }
@@ -98,6 +103,17 @@ export const api = {
   quit: () => request<{ stopping: boolean }>('/api/app/quit', post({})),
   cache: (signal?: AbortSignal) => request<CacheReport>('/api/cache', { signal }),
   cacheAction: (body: CacheActionRequest) => request<CacheActionResponse>('/api/cache', post(body)),
+  store: (query = '', options: { page?: number; limit?: number; refresh?: boolean; signal?: AbortSignal } = {}) => {
+    const params = new URLSearchParams();
+    if (query.trim() !== '') params.set('q', query.trim());
+    if (options.page !== undefined) params.set('page', String(options.page));
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    if (options.refresh) params.set('refresh', '1');
+    const qs = params.toString();
+    return request<StoreReport>(`/api/store${qs ? `?${qs}` : ''}`, { signal: options.signal }, STORE_TIMEOUT_MS);
+  },
+  installStoreSkill: (body: StoreInstallRequest) =>
+    request<StoreInstallResponse>('/api/store/install', post(body), STORE_TIMEOUT_MS),
   settingsCatalog: (signal?: AbortSignal) =>
     request<SettingsCatalog>('/api/settings/catalog', { signal }),
   settings: (signal?: AbortSignal) => request<SettingsReport>('/api/settings', { signal }),

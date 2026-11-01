@@ -39,16 +39,21 @@ parent: agent-manager
 - **MCP 用源文件 + 同步**：`~/.agents/mcp/servers.json` 保存归一化定义（transport/command/args/env/cwd/url/headers），三家 agent 的配置按各自格式物化。矩阵比较核心字段，忽略 Codex/pi 特有字段；状态为 synced/drift/missing/orphan/invalid/unsupported。源写入与 agent 写入都先快照；agent 侧复用 settings 的 etag/校验/原子写。MCP 无法像 skills 一样用链接共享，所以这里是「同步副本」而不是链接。
 - **Hooks 用事件级源文件 + 同步**：`~/.agents/hooks/hooks.json` 按事件保存 `claude`/`codex` 的 matcher 组数组；Claude 写 `~/.claude/settings.json#hooks`，Codex 写 `~/.codex/hooks.json#hooks`。矩阵按事件比较；pi 无原生 hooks。Codex 修改 hooks 后需要用 `/hooks` 重新信任（哈希变化），同步时会提示。
 - **前端用 Vite + React**：后续交互都带确认与回滚状态，比起服务端直出少一次重写。
+- **样式是一套 token，不是逐页调色**：`web/src/styles.css` 顶部定义唯一的调色板 / 圆角 / 阴影 / 字体变量，明暗两套只在 `:root`、`[data-theme='dark']` 与 `prefers-color-scheme` 三处赋值，其余规则一律引用变量。组件类名保持语义化单类（`.card`、`.field`、`.mcpm-table`），不使用 utility 类，也不在 TSX 里写内联样式；状态色只通过 `.state-*`、`.mcpm-*` 这类现有后缀类表达。改主题或调色只需动 token。
 - **确认统一走模态对话框**：`web/src/lib/confirm.tsx` 提供 `useConfirmDialog()`，返回 `[ask, node]`；`ask({title, message, confirmLabel, danger, run})` 返回 `Promise<boolean>`。传 `run` 时写操作在对话框内执行，失败就地显示并可重试，成功才 resolve `true`；不传 `run` 时用户一应答就 resolve，由调用方自己显示进度（用于只改草稿的操作）。`danger` 时初始焦点落在「取消」，`Esc`/遮罩点击等同取消。对话框挂在 `components/ConfirmDialog.tsx`（原生 `<dialog showModal>`），并登记一个全局计数供 `isConfirmOpen()` 使用，避免 `Ctrl+S` 等全局快捷键在弹窗后面再次触发写操作。不要再新增 `window.confirm`。
 - **内联表单关闭前先确认**：MCP 新增/编辑与 Hooks 新增/编辑面板都把「打开时的表单」序列化存在 `baselineRef` 里，`closeForm()` 对比当前值；有改动就用 `ask({danger:true})` 问一次，同时 `Esc` 与「取消」走同一个 `closeForm()`。没改动的表单直接关，不打扰。保存成功时先把基线与表单一起清掉，避免关面板时再问一次。
 - **模型选择用 `components/ModelPicker.tsx`**：按钮 + 可筛选列表，支持 ↑/↓/Enter/Esc、自定义 ID 与清除；原生 `<datalist>` 在 100+ 选项时不可用（看不到上下文长度与能力，弹层不受控）。
 - **Vite 锁在 7.x**：Vite 8（rolldown）无法解析 `react-dom/client` 里的相对 CJS 引用，构建失败；7.x 构建正常。
 - **缓存用回收站代替快照**：`server/cache.ts` 按白名单列出各 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions`/`.tmp`、`~/.pi/agent/sessions` 等），清理只是把内容 `rename` 进 `<dataDir>/recycle/<id>/`（只有跨卷才复制），所以「清理」可回滚，「清空回收站」才是唯一的不可逆动作。请求只带目标 id，路径永远由服务端清单决定；glob 匹配会跳过 `PROTECTED_NAMES` 里的活配置文件，链接一律不跟随。年龄分档 [1,7,30,90] 天在一次遍历里算完，sqlite 的 `-wal`/`-shm` 与主文件同组，组内任一文件较新就整组跳过。
 
+- **商店是注册表客户端，不是第二个源**：`server/store.ts` 只做两件事——把注册表（默认 skillstore.io）的目录读成页面能渲染的行，把选中的 skill 下载进 `~/.agents/skills` 再按请求建链。安装分两步：`/api/skills/<slug>/manifest` 给出目录名、ZIP 地址与 sha256，ZIP 再由 `server/zip.ts` 解开（只认 store / deflate，读中央目录，不引依赖），先在 `<dataDir>/tmp` 里校验校验值、`SKILL.md` 与路径越界，再整体 `move` 进源，所以失败不会留下半个被扫描到的 skill；一次安装只建一个快照，`created` 覆盖新目录与它建的链接。目录名已存在时 409 不覆盖——副本、链接的取舍留给 Skills 页。清单内存缓存 60 秒，注册表 5xx 会重试，失败时回退上次结果并标 `stale`；`AGENT_MANAGER_STORE_URL` 可指向同接口的镜像。
+- **商店页的中英文只翻译界面**：`web/src/lib/store-i18n.ts` 存商店页所有文案的两版，页面顶部切 `中文 / English / 双语`（默认双语，记在 localStorage）；分类与风险级别也走同一词典。skill 自己的名字、描述与许可证保持发布者原文——翻译第三方内容会把“他到底写了什么”变得不可核对。
+
 ## Invariants
 
 - 扫描不写任何文件；页面上的数字必须能在磁盘上复现。
 - 每个写操作都可还原：配置类是快照，缓存类是回收站。
+- 商店只往源目录与 `data/tmp/` 写；skill 内容永不执行，不覆盖已有的同名目录。
 - 配置文件永不写入；`POST /api/open` 只接受已知配置路径的白名单。
 - API 只监听 `127.0.0.1`，请求体上限 1MB。
 - 新增 agent 只需在 `server/index.ts` 的清单里加一条 `{key, label, root}`，扫描逻辑不动。

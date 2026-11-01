@@ -40,6 +40,7 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 7. **MCP 单一源** — `~/.agents/mcp/servers.json` 是唯一源；矩阵按 agent 显示 已同步 / 有差异 / 缺失 / 孤儿 / 无效 / 不支持，支持收进源、同步、从源或 agent 移除。Claude/Codex/pi 的格式差异在写回时映射，未知字段保留。
 8. **Hooks 单一源** — `~/.agents/hooks/hooks.json` 以事件为单位保存 Claude/Codex 的 matcher 组与 handler；矩阵显示同步状态，支持导入、同步、移除；pi 没有原生 hooks。
 9. **缓存与会话清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等），显示占用、文件数与 1/7/30/90 天的年龄分布；清理是「移进回收站」（同一卷上就是 `rename`），可在界面里原样恢复，只有「清空回收站」才真正释放磁盘。
+10. **技能商店** — 在内置页里浏览并搜索 skillstore.io 的目录（带分类、风险级别、许可证与质量分），一次点击就把选中的 skill 装进 `~/.agents/skills` 并按「安装后链接到」建链；页面文案支持中文 / English / 双语（默认双语），skill 正文保持发布者原文。下载先按 manifest 的 sha256 校验、落在临时目录里检查路径与 `SKILL.md`，再整体 `move` 进源，同名已存在则拒绝覆盖，安装前自动快照可整体撤销。
 
 ## Non-Goals
 
@@ -48,6 +49,8 @@ AgentManager 是给自己用的本地配置管理器：启动一个本地服务�
 - 不服务 Claude Code、Codex、pi 之外的 agent（Gemini CLI、Copilot CLI、Kimi Code、CodeMaker 明确不做）。
 - 不做多用户、安装包、跨机器同步或云备份：单机、单用户、`127.0.0.1`。
 - 不代跑 agent：不启动会话、不代理模型请求。
+- 不做 skill 的发布、版本升级与自动更新：商店只负责搜索与安装，安装结果就是一个普通目录，升级要手动重装。
+- 不执行 skill 内容：安装只写文件，不跑它脚本里的任何命令。
 - 不做定时或自动清理：缓存只在界面里手动清理，回收站只在手动「清空」时释放；不内置保留期策略。
 
 ## Tech Notes

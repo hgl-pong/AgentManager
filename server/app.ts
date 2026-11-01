@@ -15,6 +15,7 @@ import { isInside, scanMatrix } from './scan.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
 import { createSettingsRegistry, readSettings, saveSettings } from './settings.ts';
 import { listSnapshots, restoreSnapshot } from './snapshot.ts';
+import { getStoreReport, installStoreSkill, listInstalledSkills } from './store.ts';
 import { VERSION } from './version.ts';
 import { AppError } from '../shared/types.ts';
 import type {
@@ -30,6 +31,7 @@ import type {
   SettingsFileDescriptor,
   SettingsSaveRequest,
   SkillActionRequest,
+  StoreInstallRequest,
 } from '../shared/types.ts';
 
 /** Base64-encoded UI files, keyed by path relative to dist/. Used by the standalone build. */
@@ -70,6 +72,8 @@ export interface AppConfig {
   cacheTargets: CacheTargetSpec[];
   /** Where cleaned files wait until they are restored or purged. */
   cacheRecycleRoot: string;
+  /** Scratch space for skill downloads; kept outside the source so a failure leaves no skill behind. */
+  storeTempRoot: string;
   openable: Set<string>;
 }
 
@@ -160,6 +164,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     process.env.AGENT_MANAGER_CACHE_RECYCLE ?? join(dataDir, 'recycle'),
   );
   const cacheSpecs = cacheTargets(home);
+  const storeTempRoot = process.env.AGENT_MANAGER_STORE_TEMP ?? join(dataDir, 'tmp');
 
   const openable = new Set(
     [
@@ -198,6 +203,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     codexHooks,
     cacheTargets: cacheSpecs,
     cacheRecycleRoot,
+    storeTempRoot,
     openable,
   };
 }
@@ -570,6 +576,41 @@ async function handleRequest(
     const body = (await readJson(request)) as unknown as CacheActionRequest;
     const result = await writes.run(() => runCacheAction(cacheInput(config), body));
     json(response, 200, result);
+    return;
+  }
+
+  if (pathname === '/api/store' && request.method === 'GET') {
+    const params = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams;
+    const limit = Number(params.get('limit') ?? '');
+    const page = Number(params.get('page') ?? '');
+    json(
+      response,
+      200,
+      await getStoreReport({
+        query: params.get('q') ?? '',
+        ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+        ...(Number.isFinite(page) && page > 0 ? { page } : {}),
+        refresh: params.get('refresh') === '1',
+        sourceSkills: listInstalledSkills(config.source),
+        sourcePath: config.source,
+      }),
+    );
+    return;
+  }
+
+  if (pathname === '/api/store/install' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as StoreInstallRequest;
+    const payload = await writes.run(async () => {
+      const result = await installStoreSkill({
+        source: config.source,
+        snapshotRoot: config.snapshotRoot,
+        tempRoot: config.storeTempRoot,
+        agents: config.agents,
+        request: body,
+      });
+      return { ...result, matrix: safeMatrix(config) };
+    });
+    json(response, 200, payload);
     return;
   }
 

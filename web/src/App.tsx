@@ -16,10 +16,24 @@ import type { PromptsHandle } from './views/PromptsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
 import type { SettingsHandle } from './views/SettingsView.tsx';
 import { SkillsView } from './views/SkillsView.tsx';
+import { StoreView } from './views/StoreView.tsx';
 import { SnapshotsPanel } from './views/SnapshotsPanel.tsx';
 import { useConfirmDialog } from './lib/confirm.tsx';
 import { THEME_OPTIONS, applyTheme, loadTheme, rememberTheme } from './lib/theme.ts';
 import type { ThemeMode } from './lib/theme.ts';
+
+/** One small line-drawn glyph per tab; the sidebar reads as a list of places, not a list of words. */
+const ICONS = {
+  skills:
+    'M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z M12 12v9 M4 7.5 12 12l8-4.5',
+  store: 'M4.5 8h15l-1.2 11.4a2 2 0 0 1-2 1.8H7.7a2 2 0 0 1-2-1.8L4.5 8Z M9 8V6.5a3 3 0 0 1 6 0V8',
+  mcp: 'M4 6h16v5H4z M4 13h16v5H4z M7.5 8.5h.01 M7.5 15.5h.01',
+  hooks: 'M4 7h6a4 4 0 0 1 4 4v2a4 4 0 0 0 4 4h2 M16 13l3 4-3 4 M8 7 4 3 M8 7 4 11',
+  prompts: 'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',
+  settings:
+    'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2v.17a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-2.95-1.1l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1-1.83-1.2h-.17a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a2 2 0 0 1 1.2-1.83',
+  cache: 'M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
+} as const;
 
 const TABS = [
   {
@@ -27,6 +41,12 @@ const TABS = [
     label: 'Skills',
     title: 'Skills',
     lede: '查看每个 skill 在 Claude Code、Codex、pi 中的链接状态。',
+  },
+  {
+    key: 'store',
+    label: '商店',
+    title: '技能商店',
+    lede: '从 skillstore.io 搜索技能，装进源目录，再链接给 Claude Code、Codex 与 pi。Skills come from skillstore.io; the page can show Chinese, English, or both.',
   },
   {
     key: 'mcp',
@@ -59,6 +79,14 @@ const TABS = [
     lede: '查看各 agent 的会话记录与缓存占用，清理后先从回收站里保留，可随时恢复。',
   },
 ] as const;
+
+function TabIcon({ name }: { name: keyof typeof ICONS }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICONS[name]} />
+    </svg>
+  );
+}
 
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -302,6 +330,12 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z" />
+              <path d="M12 12v9M12 12 4.5 7.2M12 12l7.5-4.8" />
+            </svg>
+          </span>
           <span className="brand-copy">
             <strong>AgentManager</strong>
             <span>本地配置</span>
@@ -322,6 +356,9 @@ export default function App() {
                 className={entry.key === tab ? 'side-link is-active' : 'side-link'}
                 onClick={() => select(entry.key)}
               >
+                <span className="side-link-icon">
+                  <TabIcon name={entry.key} />
+                </span>
                 <span className="side-link-label">{entry.label}</span>
               </button>
             ))}
@@ -337,6 +374,11 @@ export default function App() {
           <ul>
             {agents.map((agent) => (
               <li key={agent.key} className="side-agent">
+                <span
+                  className={agent.detected ? 'status-dot is-on' : 'status-dot'}
+                  title={agent.detected ? '已检测到' : '未检测到'}
+                  aria-hidden="true"
+                />
                 <span className="side-agent-copy">
                   <strong>{agent.label}</strong>
                   <span>
@@ -408,6 +450,9 @@ export default function App() {
           {notice && <p className="notice">{notice}</p>}
 
           {tab === 'skills' && <SkillsView version={dataVersion} onChanged={changed} />}
+          {tab === 'store' && (
+            <StoreView version={dataVersion} agents={agents} onChanged={changed} />
+          )}
           {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
           {tab === 'hooks' && <HooksView version={dataVersion} onChanged={changed} />}
           {tab === 'prompts' && (

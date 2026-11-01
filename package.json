@@ -15,6 +15,7 @@
     "build:exe": "npm run build:catalog && node scripts/build-exe.mjs",
     "verify:exe": "node scripts/verify-exe.mjs",
     "verify:ui": "node scripts/ui-check.mjs",
+    "shots": "node scripts/shots.mjs",
     "install:shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
     "install:autostart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1 -AutoStart",
     "uninstall:shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1 -Uninstall",
@@ -36,5 +37,5 @@
     "typescript": "^7.0.2",
     "vite": "^7.3.7"
   },
-  "version": "0.7.0"
+  "version": "0.9.1"
 }
