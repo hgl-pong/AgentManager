@@ -778,6 +778,10 @@ function moveToRecycle(
   const targetIds = [...new Set(plan.map((entry) => entry.spec.id))];
   const entries: CacheRecycleEntry[] = [];
 
+  // Write the manifest before the first move, then after each one. A process killed mid-cleanup
+  // (Ctrl+C, --stop, power loss) cannot run the catch below, and without a manifest the items that
+  // did move would be invisible to the recycle bin and impossible to restore.
+  writeManifest(input.recycleRoot, buildItem(id, now, operation, targetIds, entries));
   try {
     for (const { candidates } of plan) {
       for (const candidate of candidates) {
@@ -790,11 +794,12 @@ function moveToRecycle(
           bytes: candidate.bytes,
           files: candidate.files,
         });
+        writeManifest(input.recycleRoot, buildItem(id, now, operation, targetIds, entries));
       }
     }
   } catch (error) {
     // Whatever already moved stays restorable: the manifest records exactly that subset.
-    if (entries.length > 0) writeManifest(input.recycleRoot, buildItem(id, now, operation, targetIds, entries));
+    writeManifest(input.recycleRoot, buildItem(id, now, operation, targetIds, entries));
     const message = error instanceof Error ? error.message : String(error);
     throw new AppError(
       500,

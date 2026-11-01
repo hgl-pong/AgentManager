@@ -51,7 +51,7 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
           <code>{snapshot.id}</code>（{formatTime(snapshot)}，操作：
           <code>{snapshot.operation}</code>）
           <br />
-          当前文件会被快照内容覆盖，快照之后新建的文件会被删除。还原前会自动存一份安全快照。
+          当前文件会被快照内容覆盖，快照期间新建、之后没有再改动的内容会被删除；快照之后又新建的文件会保留。还原前会自动存一份安全快照。
         </>
       ),
       confirmLabel: '还原',
@@ -62,13 +62,14 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
         try {
           const { report, snapshotId } = await api.restore(snapshot.id);
           const safe = snapshotId ? ` · 安全快照 ${snapshotId}` : '';
+          const kept = report.kept.length > 0 ? `，保留了 ${report.kept.length} 项快照过后重新出现的内容` : '';
           if (report.missing.length > 0) {
             setNotice(`还原完成但不完整：已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
             setRestoreError(
               `${report.missing.length} 项无法还原（快照里没有对应备份）：${report.missing.join('、')}`,
             );
           } else {
-            setNotice(`已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${safe}`);
+            setNotice(`已还原 ${report.restored.length} 项，移除 ${report.removed.length} 项新建内容${kept}${safe}`);
           }
           onRestored();
         } finally {

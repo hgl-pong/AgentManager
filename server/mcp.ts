@@ -64,6 +64,11 @@ export function validateServerName(name: unknown): string {
   if (typeof name !== 'string' || name.trim() === '') throw new AppError(400, 'server 名称不能为空');
   if (name.length > 100) throw new AppError(400, `server 名称不能超过 100 个字符：${name.slice(0, 20)}…`);
   if (/[\\/]/.test(name)) throw new AppError(400, `server 名称不能包含 / 或 \\：${name}`);
+  // Plain object keys: `obj['__proto__'] = …` sets the prototype instead of an entry, so the
+  // server would vanish from Claude/pi JSON files and poison the matrix lookup.
+  if (name === '__proto__' || name === 'constructor' || name === 'prototype') {
+    throw new AppError(400, `server 名称不能是保留字：${name}`);
+  }
   return name;
 }
 

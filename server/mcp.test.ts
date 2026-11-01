@@ -268,6 +268,9 @@ test('saveSource rejects bad names, transports and missing command/url with 400'
   expectStatus(400, () => save('', { transport: 'stdio', command: 'x' }));
   expectStatus(400, () => save('a/b', { transport: 'stdio', command: 'x' }));
   expectStatus(400, () => save('a\\b', { transport: 'stdio', command: 'x' }));
+  // Plain-object keys: a `__proto__` entry would set the prototype instead of writing a server.
+  expectStatus(400, () => save('__proto__', { transport: 'stdio', command: 'x' }));
+  expectStatus(400, () => save('constructor', { transport: 'stdio', command: 'x' }));
   expectStatus(400, () => save('x'.repeat(101), { transport: 'stdio', command: 'x' }));
   expectStatus(400, () => save('ok', { transport: 'ws', url: 'x' }));
   expectStatus(400, () => save('ok', { transport: 'stdio' }));

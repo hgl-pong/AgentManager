@@ -43,6 +43,7 @@ parent: agent-manager
 - **确认统一走模态对话框**：`web/src/lib/confirm.tsx` 提供 `useConfirmDialog()`，返回 `[ask, node]`；`ask({title, message, confirmLabel, danger, run})` 返回 `Promise<boolean>`。传 `run` 时写操作在对话框内执行，失败就地显示并可重试，成功才 resolve `true`；不传 `run` 时用户一应答就 resolve，由调用方自己显示进度（用于只改草稿的操作）。`danger` 时初始焦点落在「取消」，`Esc`/遮罩点击等同取消。对话框挂在 `components/ConfirmDialog.tsx`（原生 `<dialog showModal>`），并登记一个全局计数供 `isConfirmOpen()` 使用，避免 `Ctrl+S` 等全局快捷键在弹窗后面再次触发写操作。不要再新增 `window.confirm`。
 - **内联表单关闭前先确认**：MCP 新增/编辑与 Hooks 新增/编辑面板都把「打开时的表单」序列化存在 `baselineRef` 里，`closeForm()` 对比当前值；有改动就用 `ask({danger:true})` 问一次，同时 `Esc` 与「取消」走同一个 `closeForm()`。没改动的表单直接关，不打扰。保存成功时先把基线与表单一起清掉，避免关面板时再问一次。
 - **模型选择用 `components/ModelPicker.tsx`**：按钮 + 可筛选列表，支持 ↑/↓/Enter/Esc、自定义 ID 与清除；原生 `<datalist>` 在 100+ 选项时不可用（看不到上下文长度与能力，弹层不受控）。
+- **漂移要一眼可见**：「需处理」只在一个地方定义——`web/src/lib/attention.ts` 的 `needsAttention`（除已同步/已链接/不支持/不适用之外的状态都算）。侧栏「状态」里的「需处理：Skills n · MCP n · Hooks n」按页计数，每个数字都是跳到该页的按钮；同样的计数出现在 Skills/MCP/Hooks 的图例里，点击图例即可把表格筛到该状态（Skills 是按 agent 筛出该 agent 仍需处理的行）。计数与筛选共用同一函数，所以侧栏说有几行，点进去筛出来就是几行。
 - **Vite 锁在 7.x**：Vite 8（rolldown）无法解析 `react-dom/client` 里的相对 CJS 引用，构建失败；7.x 构建正常。
 - **缓存用回收站代替快照**：`server/cache.ts` 按白名单列出各 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions`/`.tmp`、`~/.pi/agent/sessions` 等），清理只是把内容 `rename` 进 `<dataDir>/recycle/<id>/`（只有跨卷才复制），所以「清理」可回滚，「清空回收站」才是唯一的不可逆动作。请求只带目标 id，路径永远由服务端清单决定；glob 匹配会跳过 `PROTECTED_NAMES` 里的活配置文件，链接一律不跟随。年龄分档 [1,7,30,90] 天在一次遍历里算完，sqlite 的 `-wal`/`-shm` 与主文件同组，组内任一文件较新就整组跳过。
 

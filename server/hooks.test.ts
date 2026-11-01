@@ -62,6 +62,13 @@ test('import Claude builds per-agent source; Claude synced, Codex none until def
   assert.ok(readFileSync(e.source, 'utf8').endsWith('\n'));
 });
 
+test('saving the source keeps top-level keys the file already has', () => {
+  const e = fresh();
+  write(e.source, { version: 1, note: 'keep me', hooks: {} });
+  e.act({ action: 'saveSource', event: 'PreToolUse', definitions: { claude: COMMAND } });
+  assert.deepEqual(read(e.source), { version: 1, note: 'keep me', hooks: { PreToolUse: { claude: COMMAND } } });
+});
+
 test('sync Codex preserves root keys, reports missing then synced and /hooks warning', () => {
   const e = fresh();
   write(e.codex, { metadata: { keep: true } });

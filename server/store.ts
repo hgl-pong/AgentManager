@@ -7,6 +7,7 @@ import {
   readdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import type { Stats } from 'node:fs';
@@ -670,6 +671,8 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
 
     const links: StoreInstallLink[] = [];
     const warnings: string[] = [];
+    // Links this install created, so a later failure can take them back out.
+    const createdLinks: string[] = [];
 
     for (const { agent, skip } of targets) {
       const linkPath = join(agent.root, name);
@@ -685,11 +688,23 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
       try {
         mkdirSync(agent.root, { recursive: true });
         symlinkSync(destination, linkPath, 'junction');
+        createdLinks.push(linkPath);
         links.push({ agent: agent.key, label: agent.label, state: 'linked', message: `已链接到 ${agent.label}` });
       } catch (error) {
+        // A link that failed for a reason other than a concurrent entry (EPERM without Developer
+        // Mode, an unsupported filesystem) would leave the skill in the source, unlinked, and the
+        // matrix would show every agent as "missing". Roll the whole install back instead.
+        if (lstatOrNull(linkPath) !== null) {
+          links.push({ agent: agent.key, label: agent.label, state: 'skipped', message: `${agent.label} 里已有同名条目，未改动` });
+          continue;
+        }
         const message = error instanceof Error ? error.message : String(error);
-        links.push({ agent: agent.key, label: agent.label, state: 'failed', message });
-        warnings.push(`${agent.label} 链接失败：${message}`);
+        for (const path of createdLinks) {
+          try { unlinkSync(path); } catch { /* best effort; the snapshot still records it */ }
+        }
+        rmSync(destination, { recursive: true, force: true });
+        markSnapshotFailed(input.snapshotRoot, snapshot.id);
+        throw new AppError(500, `链接到 ${agent.label} 失败，已撤销本次安装：${message}`);
       }
     }
 

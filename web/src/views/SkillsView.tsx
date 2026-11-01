@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
 import { useConfirmDialog } from '../lib/confirm.tsx';
+import { needsAttention } from '../lib/attention.ts';
 import type { Cell, CellState, MatrixResponse, Row, SkillActionKind } from '../../../shared/types.ts';
 
 const SHORT: Record<CellState, string> = {
@@ -134,13 +135,17 @@ function actionsFor(cell: Cell, row: Row): { action: SkillActionKind; label: str
 export function SkillsView({ version, onChanged }: { version: number; onChanged: () => void }) {
   const [matrix, setMatrix] = useState<MatrixResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Clicking an agent in the filter bar narrows the matrix to that agent's rows needing work. */
+  const [onlyAgent, setOnlyAgent] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [ask, confirmNode] = useConfirmDialog();
   const seqRef = useRef(0);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const seq = ++seqRef.current;
+    setLoading(true);
     try {
       const next = await api.matrix(signal);
       if (seq !== seqRef.current) return;
@@ -149,6 +154,8 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
     } catch (reason) {
       if (seq !== seqRef.current || signal?.aborted || isAbortError(reason)) return;
       setLoadError(errorMessage(reason));
+    } finally {
+      if (seq === seqRef.current) setLoading(false);
     }
   }, []);
 
@@ -193,12 +200,25 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
   }
   if (!matrix) return <p className="muted">扫描中…</p>;
 
+  const perAgent = (agentKey: string) =>
+    matrix.rows.filter((row) => {
+      const state = row.cells[agentKey]?.state;
+      return state !== undefined && EFFECTIVE.includes(state);
+    }).length;
+  const visibleRows =
+    onlyAgent === null
+      ? matrix.rows
+      : matrix.rows.filter((row) => {
+          const cell = row.cells[onlyAgent];
+          return cell !== undefined && needsAttention(cell.state);
+        });
+
   return (
     <section>
       <div className="toolbar">
         <p className="meta">
           源 <code>{matrix.source.path}</code> · {matrix.source.skills.length} 个 skill · {matrix.rows.length} 行 ·
-          扫描耗时 {matrix.durationMs}ms
+          {loading ? ' 扫描中…' : ` 扫描耗时 ${matrix.durationMs}ms`}
         </p>
         <ul className="legend">
           {(Object.keys(LABEL) as CellState[]).map((state) => (
@@ -227,9 +247,44 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
       {confirmNode}
 
       {matrix.agents.length === 0 && <p className="muted">没有配置任何 agent，无法显示 skill 分布。</p>}
-      {matrix.rows.length === 0 ? (
-        <p className="muted">源目录里还没有 skill。</p>
-      ) : (
+      {matrix.rows.length === 0 && (
+        <p className="muted">
+          源目录里还没有 skill。可以从<a href="#store">技能商店</a>安装一个，或把某个 agent 目录里已有的 skill 复制进源后重新扫描。
+        </p>
+      )}
+      {matrix.agents.some((agent) => agent.detected) && (
+        <div className="legend-bar">
+          <ul className="legend" aria-label="按 agent 筛选">
+            {matrix.agents.map((agent) => {
+              const attention = matrix.rows.filter((row) => {
+                const cell = row.cells[agent.key];
+                return cell !== undefined && needsAttention(cell.state);
+              }).length;
+              return (
+                <li key={agent.key}>
+                  <button
+                    type="button"
+                    className="legend-filter"
+                    aria-pressed={onlyAgent === agent.key}
+                    title={attention > 0 ? `只看 ${agent.label} 里需处理的 skill` : `${agent.label} 没有需处理的 skill`}
+                    disabled={attention === 0}
+                    onClick={() => setOnlyAgent((current) => (current === agent.key ? null : agent.key))}
+                  >
+                    {agent.label}
+                    <span className="legend-count">{attention}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {onlyAgent !== null && (
+            <button type="button" className="legend-clear" onClick={() => setOnlyAgent(null)}>
+              显示全部 {matrix.rows.length} 行
+            </button>
+          )}
+        </div>
+      )}
+      {matrix.rows.length > 0 && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -239,12 +294,7 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
                   <th key={agent.key} scope="col" className={agent.detected ? '' : 'undetected'}>
                     {agent.label}
                     <span className="count">
-                      {
-                        matrix.rows.filter((row) => {
-                          const state = row.cells[agent.key]?.state;
-                          return state !== undefined && EFFECTIVE.includes(state);
-                        }).length
-                      }{' '}
+                      {perAgent(agent.key)}{' '}
                       生效
                     </span>
                     {!agent.detected && <span className="tag">未检测到</span>}
@@ -253,7 +303,7 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
               </tr>
             </thead>
             <tbody>
-              {matrix.rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row.name} className={row.inSource ? 'from-source' : 'outside-source'}>
                   <th scope="row">{row.name}</th>
                   {matrix.agents.map((agent) => {

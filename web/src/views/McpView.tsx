@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, RefObject } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
 import { useConfirmDialog } from '../lib/confirm.tsx';
+import { needsAttention } from '../lib/attention.ts';
 import type {
   McpActionKind,
   McpActionRequest,
@@ -230,6 +231,8 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
+  /** Clicking a legend entry narrows the table to that state; null shows every row. */
+  const [onlyState, setOnlyState] = useState<McpState | null>(null);
   const seqRef = useRef(0);
   const toastTimer = useRef<number | undefined>(undefined);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -320,6 +323,23 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
       setBusy(null);
     }
   }
+
+  /** Filters for the legend counts: rows with any cell in that state, or any cell needing action. */
+  const rowStates = useMemo(() => {
+    const map = new Map<McpState, number>();
+    let attention = 0;
+    for (const row of report?.rows ?? []) {
+      const states = new Set(Object.values(row.cells).map((cell) => cell.state));
+      for (const state of states) map.set(state, (map.get(state) ?? 0) + 1);
+      if ([...states].some(needsAttention)) attention += 1;
+    }
+    return { map, attention };
+  }, [report]);
+  const visibleRows = useMemo(() => {
+    const rows = report?.rows ?? [];
+    if (onlyState === null) return rows;
+    return rows.filter((row) => Object.values(row.cells).some((cell) => cell.state === onlyState));
+  }, [report, onlyState]);
 
   function importAll() {
     void run('importAll', { action: 'importAll', prefer: 'claude' }, {
@@ -464,13 +484,36 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
         </div>
       )}
 
-      <ul className="legend mcpm-legend" aria-label="状态图例">
-        {(Object.keys(STATE_LABEL) as McpState[]).map((state) => (
-          <li key={state}>
-            <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {STATE_LABEL[state]}
-          </li>
-        ))}
-      </ul>
+      <div className="legend-bar">
+        <ul className="legend mcpm-legend" aria-label="状态图例">
+          {(Object.keys(STATE_LABEL) as McpState[]).map((state) => {
+            const count = rowStates.map.get(state) ?? 0;
+            return (
+              <li key={state}>
+                <button
+                  type="button"
+                  className="legend-filter"
+                  aria-pressed={onlyState === state}
+                  title={count > 0 ? `只看${STATE_LABEL[state]}的 server` : `没有${STATE_LABEL[state]}的 server`}
+                  disabled={count === 0}
+                  onClick={() => setOnlyState((current) => (current === state ? null : state))}
+                >
+                  <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {STATE_LABEL[state]}
+                  <span className="legend-count">{count}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {onlyState !== null && (
+          <button type="button" className="legend-clear" onClick={() => setOnlyState(null)}>
+            显示全部 {report.rows.length} 行
+          </button>
+        )}
+        {onlyState === null && rowStates.attention > 0 && (
+          <span className="legend-hint">点图例可按状态筛选 · {rowStates.attention} 行需处理</span>
+        )}
+      </div>
 
       {form && (
         <McpForm
@@ -517,7 +560,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
               </tr>
             </thead>
             <tbody>
-              {report.rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row.name} className={row.inSource ? 'from-source' : 'outside-source'}>
                   <th scope="row">{row.name}</th>
                   <td className={row.inSource ? 'mcpm-source in' : 'mcpm-source'}>

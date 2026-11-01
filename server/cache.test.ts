@@ -150,6 +150,22 @@ test('a clean moves only files older than the cutoff and keeps the rest', () => 
   assert.match(result.message, /回收站/);
 });
 
+test('a clean writes its manifest and updates it as items move', () => {
+  const env = fresh();
+  const projects = join(env.home, '.claude', 'projects');
+  const files = [join(projects, 'proj-a', 'a.jsonl'), join(projects, 'proj-b', 'b.jsonl')];
+  for (const file of files) write(file, 'x', 40);
+
+  act(env, { action: 'clean', ids: ['claude.projects'], olderThanDays: 30 });
+
+  const [itemDir] = readdirSync(env.input.recycleRoot);
+  const manifest = JSON.parse(readFileSync(join(env.input.recycleRoot, itemDir!, 'manifest.json'), 'utf8'));
+  assert.deepEqual(
+    manifest.entries.map((entry: { originalPath: string }) => entry.originalPath).sort(),
+    [...files].sort(),
+  );
+});
+
 test('a whole-target clean moves the directory as one restorable item', () => {
   const env = fresh();
   const sessions = join(env.home, '.codex', 'sessions', '2026', '10');

@@ -8,7 +8,7 @@ The source is `<home>/.agents/hooks/hooks.json`, version 1 with event → agent 
 
 ## Implementation
 
-- `server/hooks.ts`: `readSource` treats missing files as an empty source and reports malformed JSON, non-object roots and invalid source structures as `source.error`; every action refuses an unreadable source with HTTP 400. Source data must contain version 1 and a hooks object.
+- `server/hooks.ts`: `readSource` treats missing files as an empty source and reports malformed JSON, non-object roots and invalid source structures as `source.error`; every action refuses an unreadable source with HTTP 400. Source data must contain version 1 and a hooks object. Saving the source owns only `version` and `hooks`: any other top-level keys the file already carries are kept as-is.
 - `validateDefinitions` / `eventName`: case-sensitive Claude/Codex event union, per-agent handler types and required nonempty command/url/server/tool, matcher/group/handler structure. Unknown source agent keys are rejected.
 - `buildHooksReport`: source-first alphabetical event rows; all three agent cells; per-agent unsupported/none/orphan/missing/synced/drift states; empty-array absence semantics; structural equality ignoring object-key order; known event suggestions and disabled Codex feature warning.
 - `summary`: group/handler counts and type/command excerpts, masking credential flags, common token prefixes, bearer credentials, URL userinfo and token query values. Raw definitions remain unmasked for editing; summaries omit headers/URLs/payload fields.

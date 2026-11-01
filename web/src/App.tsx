@@ -3,11 +3,14 @@ import { api, errorMessage, isAbortError } from './api.ts';
 import type {
   ConfigReport,
   HealthResponse,
+  HookMatrixReport,
   MatrixResponse,
+  McpMatrixReport,
   PromptsReport,
   PromptState,
   SettingsReport,
 } from '../../shared/types.ts';
+import { countHookRows, countMcpRows, countSkillRows } from './lib/attention.ts';
 import { McpView } from './views/McpView.tsx';
 import { CacheView } from './views/CacheView.tsx';
 import { HooksView } from './views/HooksView.tsx';
@@ -124,6 +127,8 @@ export default function App() {
   const [matrixReport, setMatrixReport] = useState<MatrixResponse | null>(null);
   const [settingsReport, setSettingsReport] = useState<SettingsReport | null>(null);
   const [configReport, setConfigReport] = useState<ConfigReport | null>(null);
+  const [hooksReport, setHooksReport] = useState<HookMatrixReport | null>(null);
+  const [mcpReport, setMcpReport] = useState<McpMatrixReport | null>(null);
   const [metaErrors, setMetaErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [quitting, setQuitting] = useState(false);
@@ -152,11 +157,13 @@ export default function App() {
       api.matrix(signal),
       api.settings(signal),
       api.config(signal),
+      api.hooks(signal),
+      api.mcp(signal),
     ]);
     if (seq !== metaSeq.current || signal?.aborted) return;
 
     const errors: string[] = [];
-    const [healthResult, promptsResult, matrixResult, settingsResult, configResult] = results;
+    const [healthResult, promptsResult, matrixResult, settingsResult, configResult, hooksResult, mcpResult] = results;
     if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
     else if (!isAbortError(healthResult.reason)) errors.push(`版本信息：${errorMessage(healthResult.reason)}`);
 
@@ -171,6 +178,12 @@ export default function App() {
 
     if (configResult.status === 'fulfilled') setConfigReport(configResult.value);
     else if (!isAbortError(configResult.reason)) errors.push(`MCP 摘要：${errorMessage(configResult.reason)}`);
+
+    if (hooksResult.status === 'fulfilled') setHooksReport(hooksResult.value);
+    else if (!isAbortError(hooksResult.reason)) errors.push(`Hooks 摘要：${errorMessage(hooksResult.reason)}`);
+
+    if (mcpResult.status === 'fulfilled') setMcpReport(mcpResult.value);
+    else if (!isAbortError(mcpResult.reason)) errors.push(`MCP 矩阵：${errorMessage(mcpResult.reason)}`);
 
     setMetaErrors(errors);
   }, []);
@@ -246,6 +259,18 @@ export default function App() {
     : '读取中…';
 
   const mcpSummary = configReport ? `${configReport.servers.length} 个 server` : '读取中…';
+
+  // Drift is the thing that should never go unnoticed: one row count per binding page, each
+  // acting as a shortcut to that page.
+  const attention = useMemo(
+    () => [
+      { key: 'skills' as const, label: 'Skills', count: countSkillRows(matrixReport?.rows) },
+      { key: 'mcp' as const, label: 'MCP', count: countMcpRows(mcpReport?.rows) },
+      { key: 'hooks' as const, label: 'Hooks', count: countHookRows(hooksReport) },
+    ],
+    [matrixReport, mcpReport, hooksReport],
+  );
+  const attentionTotal = attention.reduce((sum, entry) => sum + entry.count, 0);
 
   function anyDirty(): boolean {
     return promptsDirty.current || settingsDirty.current;
@@ -371,6 +396,27 @@ export default function App() {
             <span>提示词 {promptSummary}</span>
             <span>MCP {mcpSummary}</span>
           </div>
+          <p className={attentionTotal > 0 ? 'side-attention is-active' : 'side-attention'} role="status" aria-live="polite">
+            {metaErrors.length > 0 && !matrixReport && !configReport && !hooksReport ? (
+              '需处理：读取中…'
+            ) : attentionTotal === 0 ? (
+              '需处理：没有待处理的差异'
+            ) : (
+              <>
+                需处理：
+                {attention
+                  .filter((entry) => entry.count > 0)
+                  .map((entry, index) => (
+                    <span key={entry.key}>
+                      {index > 0 && ' · '}
+                      <button type="button" className="link-button" onClick={() => select(entry.key)}>
+                        {entry.label} {entry.count}
+                      </button>
+                    </span>
+                  ))}
+              </>
+            )}
+          </p>
           <ul>
             {agents.map((agent) => (
               <li key={agent.key} className="side-agent">

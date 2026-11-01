@@ -537,6 +537,30 @@ test('installStoreSkill skips an agent that already has an entry with the same n
   }
 });
 
+test('installStoreSkill rolls the whole install back when a link cannot be created', async () => {
+  const fixture = makeFixture();
+  // The second agent's root is a regular file, so creating the link under it fails on every platform.
+  mkdirSync(join(fixture.root, 'agents'), { recursive: true });
+  writeFileSync(fixture.agents[1]!.root, 'not a directory');
+  try {
+    await assert.rejects(
+      installStoreSkill({
+        source: fixture.source,
+        snapshotRoot: fixture.snapshotRoot,
+        tempRoot: fixture.tempRoot,
+        agents: fixture.agents,
+        baseUrl,
+        request: { owner: 'acme', slug: 'acme-pdf-tools', agents: ['claude', 'codex'] },
+      }),
+      (error: unknown) => error instanceof AppError && error.status === 500 && /已撤销本次安装/.test(error.message),
+    );
+    assert.deepEqual(listInstalledSkills(fixture.source), [], 'the source keeps no half-installed skill');
+    assert.equal(existsSync(join(fixture.agents[0]!.root, 'pdf-tools')), false, 'earlier links are removed');
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 function readdirLength(path: string): number {
   try {
     return statSync(path).isDirectory() ? readdirSync(path).length : 0;

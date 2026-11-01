@@ -255,8 +255,18 @@ export function restoreSnapshot(root: string, id: string, allowedRoots: string[]
   const touched = [...new Set([...manifest.entries.map((entry) => entry.originalPath), ...manifest.created])];
   const undoCreated = touched.filter((path) => lstatOrNull(path) === null);
   const undo = createSnapshot(root, `restore ${manifest.id}`, touched, undoCreated, new Date(), { writeInPlace: true });
+  // A failed operation's snapshot is kept so the user can "clean up" what a half-done install left
+  // behind. Content that appeared in a `created` slot *after* the snapshot failed is not ours to
+  // delete: a marked failure stops what it was doing, so whatever now occupies the slot was created
+  // later by the user or an agent. Those paths are kept, and the undo snapshot backs them up so
+  // undoing the restore does not delete them either. Successful snapshots still remove exactly what
+  // they recorded, as before.
+  const failed = manifest.operation.startsWith('[失败]');
+  const appeared = new Set(
+    failed ? touched.filter((path) => lstatOrNull(path) !== null && manifest.created.includes(path)) : [],
+  );
 
-  const report: RestoreReport = { restored: [], removed: [], missing: [] };
+  const report: RestoreReport = { restored: [], removed: [], missing: [], kept: [] };
 
   for (const entry of manifest.entries) {
     if (
@@ -300,6 +310,12 @@ export function restoreSnapshot(root: string, id: string, allowedRoots: string[]
   }
 
   for (const path of manifest.created) {
+    // The slot was free at snapshot time but holds something now: the user or an agent created it
+    // since, and it is not ours to delete.
+    if (appeared.has(path)) {
+      report.kept.push(path);
+      continue;
+    }
     if (removePath(path)) report.removed.push(path);
   }
 

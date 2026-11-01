@@ -21,7 +21,7 @@ parent: architecture
 - **空目录**：部分清理后自底向上删除被清空的子目录（`pruneEmptyDirs`），目标根目录本身保留。
 - **回收站**：`<dataDir>/recycle/<id>/`（`AGENT_MANAGER_CACHE_RECYCLE` 可覆盖），`id = YYYYMMDD-HHmmss-<8 位随机>`；目录里是 `manifest.json` 与 `items/`。manifest 记录每条 `{originalPath, storedPath, kind, bytes, files}`，`createdAt` 与 `operation` 由服务端写。
 - **移动而不是复制**：`movePath` 先 `rename`（同卷即时完成，GB 级内容也是瞬间），只有 `EXDEV` 跨卷才 `cp + rm`。因此清理后磁盘占用真正下降（内容只存在于回收站），而「彻底删除」只释放回收站那一份。
-- **失败可恢复**：移动途中抛错时，先把已经移动的子集写成 manifest，再返回 500 并说明「N 项已移入回收站并可恢复，原因是…」。不会出现「文件已被移走但没人知道」的状态。
+- **失败可恢复**：manifest 在第一次移动之前就写一次，之后每移动成功一项就重写一次；移动途中抛错时再写一次并返回 500，说明「N 项已移入回收站并可恢复，原因是…」。进程被杀（Ctrl+C、`--stop`、断电）时 catch 跑不到，但 manifest 始终覆盖已经移动的那部分，不会出现「文件已被移走但没人知道」的状态。
 - **还原**：原位置已被占用（agent 又写回了同名文件）或备份缺失时不覆盖、不删除，条目留在回收站并在响应 `skipped` 里列出；全部恢复成功后删除条目目录。还原前后端会重新扫描并返回完整报告。
 - **校验**：`id` 只允许 `[A-Za-z0-9._-]` 且不含 `..`，解析后必须仍在回收站根内；manifest 的 `storedPath` 必须在条目目录内，`originalPath` 必须落在某个目标的根内（`dir` 目标即自身，`file`/`glob` 取父目录），越界返回 400。形状不对的 manifest 返回 400，列表则跳过坏条目。
 - **扫描只读**：`scanCache` 只 `lstat`/`readdir`，回收站目录在第一次清理之前不存在。测试对此有断言。

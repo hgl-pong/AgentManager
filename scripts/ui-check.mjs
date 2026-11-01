@@ -34,12 +34,26 @@ mkdirSync(join(home, '.claude', 'skills'), { recursive: true });
 mkdirSync(join(home, '.codex', 'skills'), { recursive: true });
 mkdirSync(join(home, '.pi', 'agent', 'skills'), { recursive: true });
 writeFileSync(join(home, '.agents', 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\n---\nv1\n');
+// A second source skill with no agent links, so the sidebar has something "to handle".
+mkdirSync(join(home, '.agents', 'skills', 'beta'), { recursive: true });
+writeFileSync(join(home, '.agents', 'skills', 'beta', 'SKILL.md'), '---\nname: beta\n---\nv1\n');
 writeFileSync(join(home, '.claude', 'CLAUDE.md'), 'claude prompt body');
 writeFileSync(join(home, '.codex', 'AGENTS.md'), 'codex prompt body');
 writeFileSync(join(home, '.pi', 'agent', 'AGENTS.md'), 'pi prompt body');
 writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ model: 'gpt-5.1', permissions: { allow: ['Read'] } }, null, 2));
 writeFileSync(join(home, '.codex', 'config.toml'), 'model = "gpt-5.1"\n');
 writeFileSync(join(home, '.pi', 'agent', 'settings.json'), JSON.stringify({ defaultModel: 'gpt-5.1' }, null, 2));
+
+// Two orphan hook events (the source has neither), one per agent, so the hooks legend has rows to
+// tell apart: SessionStart is orphan for both agents, PermissionRequest on Claude only.
+writeFileSync(join(home, '.codex', 'hooks.json'), JSON.stringify({
+  hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'echo codex' }] }] },
+}, null, 2));
+writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({
+  model: 'gpt-5.1',
+  permissions: { allow: ['Read'] },
+  hooks: { PermissionRequest: [{ hooks: [{ type: 'command', command: 'echo claude' }] }] },
+}, null, 2));
 
 // Cache page fixtures: one session old enough for the 30-day scope, plus a regenerable cache blob.
 mkdirSync(join(home, '.claude', 'projects', 'proj'), { recursive: true });
@@ -629,6 +643,83 @@ try {
     reloaded.value.includes('changed on disk by another process') && !reloaded.warning,
     JSON.stringify({ warning: reloaded.warning, tail: reloaded.value.split('\n').slice(-1)[0] }),
   );
+
+  // 8b. The sidebar answers "is anything out of sync?" and its counts lead to the page.
+  await page.eval(`location.hash = 'settings'; return true;`);
+  await sleep(300);
+  await page.waitForFn(`document.querySelector('.side-attention button')`);
+  const attention = await page.eval(`return {
+    text: document.querySelector('.side-attention')?.innerText ?? '',
+    active: document.querySelector('.side-attention')?.classList.contains('is-active') ?? false,
+    buttons: [...document.querySelectorAll('.side-attention button')].map((b) => b.textContent.trim()),
+  };`);
+  check(
+    'sidebar counts the drift and links each page',
+    attention.active && attention.buttons.includes('Skills 2') && attention.buttons.includes('Hooks 2'),
+    JSON.stringify(attention),
+  );
+  await page.eval(`
+    [...document.querySelectorAll('.side-attention button')].find((b) => b.textContent.includes('Hooks')).click();
+    return true;
+  `);
+  await page.waitForFn(`location.hash === '#hooks'`);
+  check('the sidebar count jumps to its page', true);
+
+  // 8c. The hooks legend filters the table, and "显示全部" brings every row back.
+  await page.waitForFn(`document.querySelectorAll('.hook-table tbody tr').length === 2`);
+  const filterState = await page.eval(`
+    const buttons = [...document.querySelectorAll('.legend-filter')];
+    const orphan = buttons.find((b) => b.textContent.includes('孤儿'));
+    const missing = buttons.find((b) => b.textContent.includes('缺失'));
+    const before = document.querySelectorAll('.hook-table tbody tr').length;
+    if (orphan.getAttribute('aria-pressed') !== 'false') return { before, error: 'orphan not unpressed' };
+    orphan.click();
+    return { before, pressed: orphan.getAttribute('aria-pressed'), missingDisabled: missing.disabled };
+  `);
+  await sleep(200);
+  const filtered = await page.eval(`
+    return {
+      rows: document.querySelectorAll('.hook-table tbody tr').length,
+      first: document.querySelector('.hook-table tbody tr')?.innerText ?? '',
+      clear: document.querySelector('.legend-clear')?.textContent ?? '',
+    };
+  `);
+  check(
+    'clicking a legend state filters the hooks table',
+    // Both rows are orphans, so the orphan filter keeps both and only "显示全部" is offered to clear
+    // a state that covers every row; filtering by 缺失 (no row) must be disabled.
+    filterState.before === 2 && filtered.rows === 2 && filtered.clear === '显示全部 2 行' && filterState.missingDisabled,
+    JSON.stringify({ filterState, filtered }),
+  );
+  await page.eval(`document.querySelector('.legend-clear').click(); return true;`);
+  await sleep(200);
+  const cleared = await page.eval(`return !document.querySelector('.legend-clear');`);
+  check('显示全部 restores the unfiltered table', cleared);
+
+  // 8d. The skills filter bar counts each agent's rows needing work and narrows the matrix.
+  await page.eval(`location.hash = 'skills'; return true;`);
+  await page.waitForFn(`document.querySelector('table')`);
+  const skillsFilter = await page.eval(`
+    const before = document.querySelectorAll('table tbody tr').length;
+    const bar = document.querySelector('[aria-label="按 agent 筛选"] .legend-filter[aria-pressed="false"]:not(:disabled)');
+    if (!bar) return { before, error: 'no enabled agent filter' };
+    const label = bar.textContent.replace(/\\s+/g, ' ').trim();
+    bar.click();
+    return { before, label };
+  `);
+  await sleep(200);
+  const narrowed = await page.eval(`return {
+    rows: document.querySelectorAll('table tbody tr').length,
+    names: [...document.querySelectorAll('table tbody th[scope="row"]')].map((th) => th.textContent),
+  };`);
+  check(
+    'the agent filter shows only that agent’s unlinked skills',
+    skillsFilter.before === 2 && narrowed.rows === 2 && narrowed.names.join(',') === 'alpha,beta',
+    JSON.stringify({ skillsFilter, narrowed }),
+  );
+  await page.eval(`document.querySelector('.legend-clear').click(); return true;`);
+  await sleep(150);
+  check('clearing the agent filter restores every row', await page.eval(`return !document.querySelector('.legend-clear') && document.querySelectorAll('table tbody tr').length === 2;`));
 
   // 9. Skill link dialog names both ends of the link and focuses the action.
   await page.eval(`document.querySelector('#nav-skills').click(); return true;`);

@@ -197,6 +197,8 @@ export interface RestoreReport {
   restored: string[];
   removed: string[];
   missing: string[];
+  /** Created by the snapshot but re-created on disk since; kept as-is and backed up in the undo snapshot. */
+  kept: string[];
 }
 
 export interface RestoreResponse {

@@ -182,7 +182,8 @@ export function runHooksAction(input: HooksInput, request: HookActionRequest): H
   };
   const saveSource = () => {
     for (const [event, definitions] of Object.entries(hooks)) { eventName(event); validateDefinitions(definitions); }
-    snapshotIds.push(writeJsonSnapshot(input, input.sourcePath, { version: 1, hooks }, 'hooks source'));
+    // Keep any other top-level keys the file already carries; saving only owns `version` and `hooks`.
+    snapshotIds.push(writeJsonSnapshot(input, input.sourcePath, { ...source.data, version: 1, hooks }, 'hooks source'));
   };
   const updates = new Map<Agent, ObjectValue>();
   const update = (agent: Agent) => {
@@ -233,8 +234,10 @@ export function runHooksAction(input: HooksInput, request: HookActionRequest): H
       validateDefinitions(request.definitions);
       if (Object.keys(request.definitions).length) hooks[event] = request.definitions;
       else delete hooks[event];
-      // Preflight target readability before committing the source.
+      // Preflight target readability before committing the source: a target that cannot be read
+      // must fail the request before the source changes, not after it.
       if (request.agents?.length) sync([event]);
+      for (const agent of selected) update(agent);
       saveSource();
       break;
     }

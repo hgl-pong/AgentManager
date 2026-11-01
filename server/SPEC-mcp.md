@@ -79,7 +79,7 @@ agent 条目 → 中立定义：
 
 ### 校验（400）
 
-- name：非空、≤100 字符、不含 `/` 或 `\`。
+- name：非空、≤100 字符、不含 `/` 或 `\`，且不能是 `__proto__` / `constructor` / `prototype`：这些名字作为普通对象键赋值时会改原型而不是写条目，server 会从 Claude/pi 的 JSON 里静默消失。
 - transport ∈ stdio/http/sse；stdio 必须有非空 command；http/sse 必须有非空 url。
 - args 为字符串数组；env/headers 为 string→string 对象；cwd 为字符串。不适用于该 transport 的字段在通过类型校验后被丢弃。
 - 未知 action、未知 agent / prefer、agents 不是数组 → 400。

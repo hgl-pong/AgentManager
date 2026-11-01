@@ -125,6 +125,23 @@ test('paths that do not exist are not recorded', () => {
   assert.equal(manifest.entries.length, 0);
 });
 
+test('a file created later in a snapshot-created slot is kept, not deleted', () => {
+  const created = join(workspace, 'later-file');
+  // The operation failed before creating it, so the slot was free when the snapshot was taken.
+  const manifest = createSnapshot(snapshotRoot(), 'failed install', [], [created]);
+  markSnapshotFailed(snapshotRoot(), manifest.id);
+  writeFileSync(created, 'created by codex after the fact');
+
+  const report = restoreSnapshot(snapshotRoot(), manifest.id, [workspace]);
+  assert.equal(readFileSync(created, 'utf8'), 'created by codex after the fact');
+  assert.deepEqual(report.removed, []);
+  assert.deepEqual(report.kept, [created]);
+
+  // Undoing the restore keeps it too, because the undo snapshot backed it up.
+  restoreSnapshot(snapshotRoot(), report.snapshotId, [workspace]);
+  assert.equal(readFileSync(created, 'utf8'), 'created by codex after the fact');
+});
+
 test('a restore snapshots the live state first and can itself be undone', () => {
   const file = join(workspace, 'undo.txt');
   writeFileSync(file, 'v2');
