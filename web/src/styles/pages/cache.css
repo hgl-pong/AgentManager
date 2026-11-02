@@ -1,0 +1,246 @@
+/* ==========================================================================
+   Cache page — grouped targets table
+   ========================================================================== */
+
+.cache-page > .notice,
+.cache-page > .error {
+  margin-bottom: var(--space-3);
+}
+
+.cache-page > .toolbar {
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+@media (min-width: 681px) {
+  .cache-page > .toolbar {
+    align-items: center;
+  }
+}
+
+.cache-page > .toolbar .meta strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.cache-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.cache-filter .control {
+  width: auto;
+  min-width: 148px;
+}
+
+/* ---------- table ---------- */
+
+.cache-page .cache-table {
+  min-width: 680px;
+}
+
+.cache-table thead th {
+  text-align: right;
+}
+
+.cache-table thead th:first-child {
+  text-align: left;
+}
+
+.cache-table tbody th {
+  height: auto;
+  padding: 7px 14px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.cache-table tbody td {
+  height: auto;
+  padding: 7px 14px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cache-table tbody td:last-child {
+  white-space: nowrap;
+}
+
+.cache-label {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.cache-path {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-regular);
+  overflow-wrap: anywhere;
+}
+
+.cache-note {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-snug);
+}
+
+.cache-scope {
+  margin-top: 1px;
+  color: var(--text-dim);
+  font-size: var(--fs-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.cache-bytes {
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status tags stay small: colour marks the row's risk, not the whole row. */
+.cache-table .tag {
+  height: 18px;
+  padding: 0 6px;
+  color: var(--text-dim);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+}
+
+.cache-table .tag.tag-executable {
+  color: var(--warning);
+  font-weight: var(--fw-semibold);
+}
+
+/* ---------- group rows as section headers ---------- */
+
+.cache-table tbody .cache-group-row th,
+.cache-table tbody .cache-group-row td {
+  height: auto;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  vertical-align: middle;
+}
+
+.cache-table tbody .cache-group-row th {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+}
+
+.cache-table tbody .cache-group-row th .cache-scope {
+  display: inline-block;
+  margin: 0 0 0 var(--space-2);
+}
+
+.cache-table tbody .cache-group-row .cache-bytes {
+  font-size: var(--fs-md);
+}
+
+.cache-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.cache-agent::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--agent-color, var(--text-dim));
+}
+
+.cache-agent.agent-claude {
+  --agent-color: var(--accent);
+}
+
+.cache-agent.agent-codex {
+  --agent-color: var(--success);
+}
+
+.cache-agent.agent-pi {
+  --agent-color: var(--warning);
+}
+
+.cache-page .cell-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.cache-clean-list {
+  max-height: 200px;
+  margin: 8px 0;
+  padding-left: 20px;
+  overflow-y: auto;
+  font-size: var(--fs-sm);
+}
+
+.cache-clean-list li {
+  margin: 3px 0;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 960px) {
+  .cache-page .table-wrap {
+    overflow-x: auto;
+  }
+
+  .cache-page .cache-table {
+    min-width: 720px;
+  }
+
+  .cache-table thead th:first-child,
+  .cache-table tbody th,
+  .cache-table tbody .cache-group-row th {
+    min-width: 220px;
+  }
+}
+
+@media (max-width: 680px) {
+  .cache-page > .toolbar {
+    align-items: stretch;
+    row-gap: var(--space-2);
+  }
+
+  .cache-page .cache-filter {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cache-filter .control {
+    width: auto;
+    min-width: 0;
+  }
+
+  .cache-page .cache-table {
+    min-width: 680px;
+  }
+
+  .cache-table thead th:first-child,
+  .cache-table tbody th,
+  .cache-table tbody .cache-group-row th {
+    min-width: 200px;
+  }
+}

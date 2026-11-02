@@ -1,6 +1,6 @@
-// Every string the store page shows, in both languages. `both` is the default: the app's other
-// pages are Chinese, while a skill registry's names, summaries and licences stay in the language
-// their publisher wrote them in, so showing the two side by side keeps the page readable either way.
+// Every string the store page shows, in both languages. `zh` is the default so the page reads
+// like the rest of the app; the switch still offers English and bilingual, because a registry's
+// names, summaries and licences stay in the language their publisher wrote them in.
 
 export type StoreLang = 'zh' | 'en' | 'both';
 
@@ -15,9 +15,9 @@ export const STORE_LANGS: StoreLang[] = ['zh', 'en', 'both'];
 export function loadStoreLang(): StoreLang {
   try {
     const stored = window.localStorage.getItem(STORE_LANG_KEY);
-    return STORE_LANGS.includes(stored as StoreLang) ? (stored as StoreLang) : 'both';
+    return STORE_LANGS.includes(stored as StoreLang) ? (stored as StoreLang) : 'zh';
   } catch {
-    return 'both';
+    return 'zh';
   }
 }
 
@@ -113,6 +113,7 @@ export const STORE_TEXT = {
   noticeInstalled: { zh: '已安装 %s 到源', en: 'Installed %s into the source' },
   noticeLinked: { zh: '并链接到 %s', en: 'linked %s' },
   noticeSnapshot: { zh: '快照 %s', en: 'snapshot %s' },
+  noticeCheckLinks: { zh: '去 Skills 查看', en: 'Check in Skills' },
   warningPrefix: { zh: '注意：', en: 'Note: ' },
 
   // MCP catalog (official MCP Registry)

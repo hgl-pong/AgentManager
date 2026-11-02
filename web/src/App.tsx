@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { api, errorMessage, isAbortError } from './api.ts';
 import type {
   ConfigReport,
@@ -43,44 +44,58 @@ const TABS = [
     key: 'skills',
     label: 'Skills',
     title: 'Skills',
-    lede: '查看每个 skill 在 Claude Code、Codex、pi 中的链接状态。',
+    group: '管理资产',
+    lede: '查看每个 skill 在三个 agent 中的链接状态。',
   },
   {
     key: 'store',
     label: '商店',
     title: '商店',
-    lede: '从 skillstore.io 搜索技能、从官方 MCP Registry 搜索 MCP server，装进各自的源目录，再链接或同步给 Claude Code、Codex 与 pi。Skills come from skillstore.io; MCP servers come from the official MCP Registry.',
-  },
-  {
-    key: 'mcp',
-    label: 'MCP',
-    title: 'MCP',
-    lede: '统一维护 MCP server 源，并同步到 Claude Code、Codex 与 pi。',
-  },
-  {
-    key: 'hooks',
-    label: 'Hooks',
-    title: 'Hooks',
-    lede: '统一维护生命周期 hooks 源，并同步到 Claude Code 与 Codex。',
+    group: '管理资产',
+    lede: '搜索并安装 skill 与 MCP server，再链接或同步到三个 agent。',
   },
   {
     key: 'prompts',
     label: '提示词',
     title: '提示词',
+    group: '单一源',
     lede: '维护所有 agent 共用的全局提示词。',
   },
   {
-    key: 'settings',
-    label: '设置',
-    title: '设置',
-    lede: '编辑各 agent 的用户级配置与 MCP。',
+    key: 'mcp',
+    label: 'MCP',
+    title: 'MCP',
+    group: '单一源',
+    lede: '维护一份 MCP 定义，同步到三个 agent。',
+  },
+  {
+    key: 'hooks',
+    label: 'Hooks',
+    title: 'Hooks',
+    group: '单一源',
+    lede: '维护一份 hooks 事件源，同步到 Claude Code 与 Codex。',
   },
   {
     key: 'cache',
     label: '缓存',
     title: '缓存',
-    lede: '查看各 agent 的会话记录与缓存占用，清理后先从回收站里保留，可随时恢复。',
+    group: '本机维护',
+    lede: '查看缓存占用；清理先进回收站，可恢复。',
   },
+  {
+    key: 'settings',
+    label: '设置',
+    title: '设置',
+    group: '本机维护',
+    lede: '编辑每个 agent 的用户级配置。',
+  },
+] as const;
+
+/** Sidebar groups, in reading order. Every tab belongs to exactly one. */
+const NAV_GROUPS = [
+  { label: '管理资产', keys: ['skills', 'store'] },
+  { label: '单一源', keys: ['prompts', 'mcp', 'hooks'] },
+  { label: '本机维护', keys: ['cache', 'settings'] },
 ] as const;
 
 function TabIcon({ name }: { name: keyof typeof ICONS }) {
@@ -132,6 +147,8 @@ export default function App() {
   const [metaErrors, setMetaErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [quitting, setQuitting] = useState(false);
+  // Mirrors the dirty refs for rendering: a draft on screen makes "重新扫描" secondary.
+  const [draftDirty, setDraftDirty] = useState(false);
 
   const promptsDirty = useRef(false);
   const settingsDirty = useRef(false);
@@ -139,15 +156,28 @@ export default function App() {
   const settingsHandle = useRef<SettingsHandle | null>(null);
   const metaSeq = useRef(0);
   const workspaceRef = useRef<HTMLElement | null>(null);
+  const navRef = useRef<HTMLDivElement | null>(null);
   const [ask, confirmNode] = useConfirmDialog();
 
   useEffect(() => {
     workspaceRef.current?.scrollTo({ top: 0 });
   }, [tab]);
 
+  // On phones the nav scrolls sideways; keep the active tab in view instead of off-screen.
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const entry = TABS.find((candidate) => candidate.key === tab) ?? TABS[0];
+    document.title = `${entry.title} · AgentManager`;
+  }, [tab]);
 
   const loadMeta = useCallback(async (signal?: AbortSignal) => {
     const seq = ++metaSeq.current;
@@ -281,6 +311,21 @@ export default function App() {
     window.location.hash = key;
   }
 
+  /** Arrow keys walk the tabs and activate them, matching the tablist contract. */
+  function onNavKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = Math.max(0, TABS.findIndex((entry) => entry.key === tab));
+    let next = index;
+    if (event.key === 'ArrowDown') next = (index + 1) % TABS.length;
+    else if (event.key === 'ArrowUp') next = (index - 1 + TABS.length) % TABS.length;
+    else if (event.key === 'Home') next = 0;
+    else next = TABS.length - 1;
+    const entry = TABS[next] ?? TABS[0];
+    navRef.current?.querySelector<HTMLButtonElement>(`#nav-${entry.key}`)?.focus();
+    select(entry.key);
+  }
+
   async function rescan() {
     if (anyDirty()) {
       const discard = await ask({
@@ -315,10 +360,12 @@ export default function App() {
 
   const markPromptsDirty = useCallback((dirty: boolean) => {
     promptsDirty.current = dirty;
+    setDraftDirty(promptsDirty.current || settingsDirty.current);
   }, []);
 
   const markSettingsDirty = useCallback((dirty: boolean) => {
     settingsDirty.current = dirty;
+    setDraftDirty(promptsDirty.current || settingsDirty.current);
   }, []);
 
   function chooseTheme(mode: ThemeMode) {
@@ -368,24 +415,41 @@ export default function App() {
         </div>
 
         <nav className="side-nav" aria-label="主导航">
-          <div className="nav-list" role="tablist" aria-orientation="vertical">
-            {TABS.map((entry) => (
-              <button
-                key={entry.key}
-                type="button"
-                role="tab"
-                id={`nav-${entry.key}`}
-                title={entry.title}
-                aria-selected={entry.key === tab}
-                aria-controls="workspace-panel"
-                className={entry.key === tab ? 'side-link is-active' : 'side-link'}
-                onClick={() => select(entry.key)}
-              >
-                <span className="side-link-icon">
-                  <TabIcon name={entry.key} />
-                </span>
-                <span className="side-link-label">{entry.label}</span>
-              </button>
+          <div
+            className="nav-list"
+            role="tablist"
+            aria-orientation="vertical"
+            ref={navRef}
+            onKeyDown={onNavKeyDown}
+          >
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label} className="nav-group" role="presentation">
+                <h2 className="nav-group-label">{group.label}</h2>
+                {group.keys.map((key) => {
+                  const entry = TABS.find((candidate) => candidate.key === key);
+                  if (!entry) return null;
+                  const count = attention.find((item) => item.key === key)?.count ?? 0;
+                  return (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      role="tab"
+                      id={`nav-${entry.key}`}
+                      title={count > 0 ? `${entry.title} · ${count} 项需处理` : entry.title}
+                      aria-selected={entry.key === tab}
+                      aria-controls="workspace-panel"
+                      className={entry.key === tab ? 'side-link is-active' : 'side-link'}
+                      onClick={() => select(entry.key)}
+                    >
+                      <span className="side-link-icon">
+                        <TabIcon name={entry.key} />
+                      </span>
+                      <span className="side-link-label">{entry.label}</span>
+                      {count > 0 && <span className="nav-badge">{count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </div>
         </nav>
@@ -396,27 +460,35 @@ export default function App() {
             <span>提示词 {promptSummary}</span>
             <span>MCP {mcpSummary}</span>
           </div>
-          <p className={attentionTotal > 0 ? 'side-attention is-active' : 'side-attention'} role="status" aria-live="polite">
+          <div
+            className={attentionTotal > 0 ? 'side-attention is-active' : 'side-attention'}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="side-attention-label">需处理</span>
             {metaErrors.length > 0 && !matrixReport && !configReport && !hooksReport ? (
-              '需处理：读取中…'
+              <span className="side-attention-empty">读取中…</span>
             ) : attentionTotal === 0 ? (
-              '需处理：没有待处理的差异'
+              <span className="side-attention-empty">没有待处理的差异</span>
             ) : (
-              <>
-                需处理：
+              <div className="side-attention-list">
                 {attention
                   .filter((entry) => entry.count > 0)
-                  .map((entry, index) => (
-                    <span key={entry.key}>
-                      {index > 0 && ' · '}
-                      <button type="button" className="link-button" onClick={() => select(entry.key)}>
-                        {entry.label} {entry.count}
-                      </button>
-                    </span>
+                  .map((entry) => (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      className="link-button"
+                      title={`跳到${entry.label}页查看差异`}
+                      aria-label={`${entry.label}：${entry.count} 项需处理`}
+                      onClick={() => select(entry.key)}
+                    >
+                      {entry.label} {entry.count}
+                    </button>
                   ))}
-              </>
+              </div>
             )}
-          </p>
+          </div>
           <ul>
             {agents.map((agent) => (
               <li key={agent.key} className="side-agent">
@@ -480,7 +552,11 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button type="button" className="primary rescan" onClick={() => void rescan()}>
+            <button
+              type="button"
+              className={draftDirty ? 'secondary rescan' : 'primary rescan'}
+              onClick={() => void rescan()}
+            >
               重新扫描
             </button>
           </div>
@@ -497,7 +573,12 @@ export default function App() {
 
           {tab === 'skills' && <SkillsView version={dataVersion} onChanged={changed} />}
           {tab === 'store' && (
-            <StoreView version={dataVersion} agents={agents} onChanged={changed} />
+            <StoreView
+              version={dataVersion}
+              agents={agents}
+              onChanged={changed}
+              onOpenSkills={() => select('skills')}
+            />
           )}
           {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
           {tab === 'hooks' && <HooksView version={dataVersion} onChanged={changed} />}

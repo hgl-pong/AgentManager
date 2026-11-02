@@ -306,7 +306,7 @@ export function CacheView({ version }: { version: number }) {
   if (!report) return <p className="muted">扫描缓存占用…</p>;
 
   return (
-    <section>
+    <section className="cache-page">
       <div className="toolbar">
         <p className="meta">
           缓存合计 <strong>{formatBytes(totals.bytes)}</strong>（{totals.files} 个文件） · 回收站{' '}
@@ -348,6 +348,7 @@ export function CacheView({ version }: { version: number }) {
       ) : (
         <div className="table-wrap">
           <table className="cache-table">
+            <caption className="sr-only">按 agent 分组的缓存目录占用，可清理到回收站</caption>
             <thead>
               <tr>
                 <th scope="col">位置</th>
@@ -461,7 +462,7 @@ export function CacheView({ version }: { version: number }) {
         <p className="muted">另有 {emptyCount} 个已知缓存位置为空或不存在，未列出。</p>
       )}
 
-      <section className="snapshots">
+      <section className="snapshots recycle-bin">
         <header>
           <button
             type="button"

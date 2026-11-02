@@ -8,6 +8,8 @@ export interface ConfirmOptions {
   message: ReactNode;
   confirmLabel?: string;
   danger?: boolean;
+  /** Content width for questions that carry more than a sentence. */
+  size?: 'sm' | 'md' | 'lg';
   /**
    * Performs the write behind the question. When given, the dialog stays open across the request,
    * shows the failure inside itself, and only resolves `true` once the write succeeds — so a retry
@@ -100,6 +102,7 @@ export function useConfirmDialog(): [(options: ConfirmOptions) => Promise<boolea
       message={state.message}
       confirmLabel={state.confirmLabel ?? '确认'}
       danger={state.danger}
+      size={state.size}
       busy={state.busy}
       error={state.error}
       onConfirm={confirm}

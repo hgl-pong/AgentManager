@@ -1312,11 +1312,11 @@ try {
     };
   `);
   check(
-    'store renders registry rows with an install action',
+    'store renders registry rows with a Chinese install action by default',
     storeShape.title === 'latte' &&
       storeShape.owner === 'acme/acme-latte' &&
       storeShape.action.includes('安装') &&
-      storeShape.action.includes('Install') &&
+      !storeShape.action.includes('Install') &&
       storeShape.targets === 3,
     JSON.stringify(storeShape),
   );
@@ -1424,8 +1424,22 @@ try {
     existsSync(installedFile) && readFileSync(installedFile, 'utf8').includes('Brew it'),
     installedFile,
   );
-  await page.waitForFn(`document.querySelector('.store-action')?.textContent.trim() === '源里已有 In source'`);
+  await page.waitForFn(`document.querySelector('.store-action')?.textContent.trim() === '源里已有'`);
   check('an installed skill is marked in the source', true);
+
+  // The install notice carries the next step: jump to Skills and verify the links.
+  const noticeLink = await page.eval(
+    `return document.querySelector('.store-page .notice .notice-link')?.textContent.trim() ?? '';`,
+  );
+  check('the install notice links to the Skills page', noticeLink === '去 Skills 查看', noticeLink);
+  await page.eval(`document.querySelector('.store-page .notice .notice-link').click(); return true;`);
+  await page.waitForFn(`document.querySelector('#nav-skills')?.getAttribute('aria-selected') === 'true'`);
+  check(
+    'the install notice opens the Skills page',
+    await page.eval(`return Boolean(document.querySelector('table tbody tr'));`),
+  );
+  await page.eval(`document.querySelector('#nav-store').click(); return true;`);
+  await page.waitForFn(`document.querySelector('.store-lang button') !== null`);
 
   // 10c. The language switch re-renders the whole page in English and back to bilingual.
   await page.eval(`

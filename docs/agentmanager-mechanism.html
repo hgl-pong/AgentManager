@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AgentManager 机制图</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f2f2ee;
+    --surface: #ffffff;
+    --surface-2: #f6f6f2;
+    --border: #dcdcd4;
+    --border-strong: #c2c2b7;
+    --text: #1b1b16;
+    --text-muted: #4d4d45;
+    --text-dim: #6d6d63;
+    --accent: #1a5fb4;
+    --radius: 6px;
+    --font-sans: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+      'PingFang SC', system-ui, sans-serif;
+    --font-mono: 'Cascadia Mono', 'Cascadia Code', 'Consolas', 'Microsoft YaHei UI', ui-monospace,
+      monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+      --bg: #11110f;
+      --surface: #181815;
+      --surface-2: #1f1f1b;
+      --border: #2e2e27;
+      --border-strong: #47473c;
+      --text: #ecece5;
+      --text-muted: #b4b4a9;
+      --text-dim: #8c8c81;
+      --accent: #8fb4e8;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --bg: #11110f;
+    --surface: #181815;
+    --surface-2: #1f1f1b;
+    --border: #2e2e27;
+    --border-strong: #47473c;
+    --text: #ecece5;
+    --text-muted: #b4b4a9;
+    --text-dim: #8c8c81;
+    --accent: #8fb4e8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    padding-block: 40px 72px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 1080px;
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kicker {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(28px, 3.6vw, 38px);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 70ch;
+    color: var(--text-muted);
+    font-size: 15.5px;
+    line-height: 1.7;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .narrow-hint {
+    display: none;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .legend li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .legend svg {
+    width: 30px;
+    height: 8px;
+    flex: none;
+    color: var(--text-dim);
+  }
+
+  .legend svg line {
+    stroke: currentColor;
+    stroke-width: 1.2;
+  }
+
+  .legend svg .dash {
+    stroke-dasharray: 4 3;
+  }
+
+  .legend svg path {
+    fill: currentColor;
+  }
+
+  .swatch-accent {
+    width: 3px;
+    height: 14px;
+    flex: none;
+    background: var(--accent);
+  }
+
+  .swatch-dashed {
+    width: 16px;
+    height: 10px;
+    flex: none;
+    border: 1px dashed var(--border-strong);
+    border-radius: 2px;
+  }
+
+  section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 14px;
+    margin-top: 36px;
+    padding-top: 36px;
+    border-top: 1px solid var(--border);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+
+  section p {
+    margin: 0;
+    max-width: 78ch;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  code {
+    padding: 1px 4px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-2);
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+  }
+
+  .diagram {
+    min-width: 0;
+    margin: 4px 0 0;
+    padding: 16px 16px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .scroll {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .diagram svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .diagram svg text {
+    font-family: var(--font-sans);
+  }
+
+  .diagram--read svg { min-width: 840px; }
+  .diagram--write svg { min-width: 900px; }
+  .diagram--store svg { min-width: 860px; }
+
+  figcaption {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .boundaries {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .boundaries li {
+    padding-left: 14px;
+    border-left: 2px solid var(--border-strong);
+  }
+
+  .boundaries strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .boundaries span {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  /* SVG classes */
+  .d-box { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; }
+  .d-chip { fill: var(--surface-2); stroke: var(--border); stroke-width: 1; }
+  .d-chip-muted {
+    fill: var(--surface);
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+  }
+  .d-outcome { fill: var(--surface-2); stroke: var(--border); stroke-width: 1; }
+  .d-line { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+  .d-line-dashed {
+    stroke: var(--text-dim);
+    stroke-width: 1.2;
+    fill: none;
+    stroke-dasharray: 5 4;
+  }
+  .d-accent { stroke: var(--accent); fill: none; }
+  .d-arrow { fill: var(--text-dim); }
+
+  .d-col {
+    font-size: 10.5px;
+    font-weight: 600;
+    fill: var(--text-dim);
+  }
+  .d-lane {
+    font-size: 11px;
+    font-weight: 650;
+    fill: var(--text);
+  }
+  .d-source {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    fill: var(--text);
+  }
+  .d-source-note {
+    font-size: 9.5px;
+    fill: var(--text-dim);
+  }
+  .d-mech {
+    font-size: 9.5px;
+    fill: var(--text-muted);
+  }
+  .d-agent {
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--text);
+  }
+  .d-path {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    fill: var(--text-muted);
+  }
+  .d-dim {
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--text-dim);
+  }
+  .d-path-dim {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    fill: var(--text-dim);
+  }
+  .d-box-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    fill: var(--text);
+  }
+  .d-box-note {
+    font-size: 9.5px;
+    fill: var(--text-muted);
+  }
+  .d-box-note-mono {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    fill: var(--text-muted);
+  }
+  .d-arrow-label {
+    font-size: 9.5px;
+    fill: var(--text-dim);
+  }
+  .d-outcome-title {
+    font-size: 10.5px;
+    font-weight: 600;
+    fill: var(--text);
+  }
+  .d-outcome-note {
+    font-size: 9.5px;
+    fill: var(--text-muted);
+  }
+  .d-note {
+    font-size: 10.5px;
+    fill: var(--text-dim);
+  }
+
+  @media (max-width: 620px) {
+    body {
+      padding-block: 28px 56px;
+    }
+
+    h1 {
+      font-size: 30px;
+    }
+
+    .lede {
+      font-size: 15px;
+    }
+
+    .diagram {
+      padding: 12px 12px 10px;
+    }
+
+    .narrow-hint {
+      display: inline;
+    }
+  }
+</style>
+
+</head>
+<body>
+<main class="page">
+  <header>
+    <p class="kicker">本地工具 · 机制记录</p>
+    <h1>AgentManager 机制图</h1>
+    <p class="lede">
+      四类资产各有唯一源。读取时每次重扫磁盘，写入时先备份再落盘，商店内容先隔离校验。下面三张图分别画传播、写盘与安装。
+    </p>
+    <div class="meta">
+      <span>AgentManager 0.9.1</span>
+      <span>2026-11-02</span>
+      <span>路径中的 ~ 表示用户目录</span>
+      <span class="narrow-hint">图表可左右滑动</span>
+    </div>
+    <ul class="legend" aria-label="图例">
+      <li><span class="swatch-accent" aria-hidden="true"></span>唯一源</li>
+      <li>
+        <svg viewBox="0 0 30 8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4"/><path d="M22 1 L29 4 L22 7 Z"/></svg>
+        链接 / 共享同一份内容
+      </li>
+      <li>
+        <svg viewBox="0 0 30 8" aria-hidden="true"><line class="dash" x1="0" y1="4" x2="22" y2="4"/><path d="M22 1 L29 4 L22 7 Z"/></svg>
+        同步副本
+      </li>
+      <li><span class="swatch-dashed" aria-hidden="true"></span>该 agent 不支持</li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>读取：一个源，三种落盘方式</h2>
+    <p>
+      skills 与提示词共享同一份内容：前者用 Windows junction 把 agent 目录指回源，后者优先硬链接（系统不允许时退化为符号链接或副本）。MCP 与 hooks 没有这种共享方式，按各 agent 的格式写同步副本。资产矩阵不缓存：每次读取都重扫目录、重算哈希，所以页面上的每个状态都能在磁盘上复现。
+    </p>
+    <figure class="diagram diagram--read">
+      <div class="scroll">
+        <svg viewBox="0 0 760 560" role="img" aria-label="四类唯一源分别通过 junction 链接、同步副本或硬链接到达 Claude Code、Codex 与 pi 的路径图">
+          <defs>
+            <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" class="d-arrow"/>
+            </marker>
+          </defs>
+
+          <text class="d-col" x="24" y="26">唯一源</text>
+          <text class="d-col" x="305" y="26" text-anchor="middle">方式</text>
+          <text class="d-col" x="400" y="26">agent 落盘位置</text>
+
+          <!-- skills -->
+          <rect class="d-box" x="24" y="60" width="230" height="80" rx="5"/>
+          <line class="d-accent" x1="24" y1="68" x2="24" y2="132" stroke-width="3"/>
+          <text class="d-source" x="40" y="90">~/.agents/skills/</text>
+          <text class="d-source-note" x="40" y="112">每个目录含 SKILL.md</text>
+
+          <line class="d-line" x1="254" y1="103" x2="356" y2="103"/>
+          <line class="d-line" x1="356" y1="69" x2="356" y2="137"/>
+          <line class="d-line" x1="356" y1="69" x2="392" y2="69" marker-end="url(#ar1)"/>
+          <line class="d-line" x1="356" y1="103" x2="392" y2="103" marker-end="url(#ar1)"/>
+          <line class="d-line" x1="356" y1="137" x2="392" y2="137" marker-end="url(#ar1)"/>
+          <text class="d-mech" x="305" y="80" text-anchor="middle">junction 链接</text>
+          <text class="d-mech" x="305" y="92" text-anchor="middle">同一份内容</text>
+
+          <rect class="d-chip" x="400" y="54" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="73">Claude Code<tspan class="d-path" dx="8">~/.claude/skills</tspan></text>
+          <rect class="d-chip" x="400" y="88" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="107">Codex<tspan class="d-path" dx="8">~/.codex/skills</tspan></text>
+          <rect class="d-chip" x="400" y="122" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="141">pi<tspan class="d-path" dx="8">~/.pi/agent/skills</tspan></text>
+
+          <!-- mcp -->
+          <rect class="d-box" x="24" y="184" width="230" height="80" rx="5"/>
+          <line class="d-accent" x1="24" y1="192" x2="24" y2="256" stroke-width="3"/>
+          <text class="d-source" x="40" y="214">~/.agents/mcp/servers.json</text>
+          <text class="d-source-note" x="40" y="236">归一化 MCP 定义</text>
+
+          <line class="d-line-dashed" x1="254" y1="227" x2="356" y2="227"/>
+          <line class="d-line-dashed" x1="356" y1="193" x2="356" y2="261"/>
+          <line class="d-line-dashed" x1="356" y1="193" x2="392" y2="193" marker-end="url(#ar1)"/>
+          <line class="d-line-dashed" x1="356" y1="227" x2="392" y2="227" marker-end="url(#ar1)"/>
+          <line class="d-line-dashed" x1="356" y1="261" x2="392" y2="261" marker-end="url(#ar1)"/>
+          <text class="d-mech" x="305" y="204" text-anchor="middle">同步副本</text>
+          <text class="d-mech" x="305" y="216" text-anchor="middle">JSON · TOML</text>
+
+          <rect class="d-chip" x="400" y="178" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="197">Claude Code<tspan class="d-path" dx="8">~/.claude.json</tspan></text>
+          <rect class="d-chip" x="400" y="212" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="231">Codex<tspan class="d-path" dx="8">~/.codex/config.toml</tspan></text>
+          <rect class="d-chip" x="400" y="246" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="265">pi<tspan class="d-path" dx="8">~/.pi/agent/mcp.json</tspan></text>
+
+          <!-- hooks -->
+          <rect class="d-box" x="24" y="308" width="230" height="80" rx="5"/>
+          <line class="d-accent" x1="24" y1="316" x2="24" y2="380" stroke-width="3"/>
+          <text class="d-source" x="40" y="338">~/.agents/hooks/hooks.json</text>
+          <text class="d-source-note" x="40" y="360">按事件的 matcher 组</text>
+
+          <line class="d-line-dashed" x1="254" y1="351" x2="356" y2="351"/>
+          <line class="d-line-dashed" x1="356" y1="317" x2="356" y2="385"/>
+          <line class="d-line-dashed" x1="356" y1="317" x2="392" y2="317" marker-end="url(#ar1)"/>
+          <line class="d-line-dashed" x1="356" y1="351" x2="392" y2="351" marker-end="url(#ar1)"/>
+          <text class="d-mech" x="305" y="328" text-anchor="middle">同步副本</text>
+          <text class="d-mech" x="305" y="340" text-anchor="middle">事件级</text>
+
+          <rect class="d-chip" x="400" y="302" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="321">Claude Code<tspan class="d-path" dx="8">~/.claude/settings.json</tspan></text>
+          <rect class="d-chip" x="400" y="336" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="355">Codex<tspan class="d-path" dx="8">~/.codex/hooks.json</tspan></text>
+          <rect class="d-chip-muted" x="400" y="370" width="330" height="30" rx="4"/>
+          <text class="d-dim" x="410" y="389">pi<tspan class="d-path-dim" dx="8">无原生 hooks</tspan></text>
+
+          <!-- prompts -->
+          <rect class="d-box" x="24" y="432" width="230" height="80" rx="5"/>
+          <line class="d-accent" x1="24" y1="440" x2="24" y2="504" stroke-width="3"/>
+          <text class="d-source" x="40" y="462">~/.agents/prompts/global.md</text>
+          <text class="d-source-note" x="40" y="484">全局提示词正文</text>
+
+          <line class="d-line" x1="254" y1="475" x2="356" y2="475"/>
+          <line class="d-line" x1="356" y1="441" x2="356" y2="509"/>
+          <line class="d-line" x1="356" y1="441" x2="392" y2="441" marker-end="url(#ar1)"/>
+          <line class="d-line" x1="356" y1="475" x2="392" y2="475" marker-end="url(#ar1)"/>
+          <line class="d-line" x1="356" y1="509" x2="392" y2="509" marker-end="url(#ar1)"/>
+          <text class="d-mech" x="305" y="452" text-anchor="middle">硬链接</text>
+          <text class="d-mech" x="305" y="464" text-anchor="middle">同一 inode</text>
+
+          <rect class="d-chip" x="400" y="426" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="445">Claude Code<tspan class="d-path" dx="8">~/.claude/CLAUDE.md</tspan></text>
+          <rect class="d-chip" x="400" y="460" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="479">Codex<tspan class="d-path" dx="8">~/.codex/AGENTS.md</tspan></text>
+          <rect class="d-chip" x="400" y="494" width="330" height="30" rx="4"/>
+          <text class="d-agent" x="410" y="513">pi<tspan class="d-path" dx="8">~/.pi/agent/AGENTS.md</tspan></text>
+        </svg>
+      </div>
+      <figcaption>
+        图 1 · 同一个源在三个 agent 里以链接或副本存在。虚线是同步副本，虚线框表示该 agent 不支持；hooks 的 pi 没有原生支持。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>写入：先快照，再落盘</h2>
+    <p>
+      所有写操作先为受影响路径（以及将要新建的路径）建快照，再以临时文件 + rename 落地。提示词与配置文件另外带 etag：如果文件在别处被改过，保存返回 409，界面保留草稿而不是覆盖。写入失败时按快照还原；还原本身也会先建一份安全快照，所以误还原还能撤销。
+    </p>
+    <figure class="diagram diagram--write">
+      <div class="scroll">
+        <svg viewBox="0 0 960 300" role="img" aria-label="一次写入经过本地写守卫、快照与原子写，以及 etag 冲突和写盘失败两条退出路径">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" class="d-arrow"/>
+            </marker>
+          </defs>
+
+          <rect class="d-box" x="20" y="56" width="140" height="80" rx="5"/>
+          <text class="d-box-title" x="90" y="82" text-anchor="middle">页面操作</text>
+          <text class="d-box-note" x="90" y="102" text-anchor="middle">提示词 / 配置文件</text>
+          <text class="d-box-note" x="90" y="116" text-anchor="middle">带 etag</text>
+
+          <rect class="d-box" x="204" y="56" width="160" height="80" rx="5"/>
+          <text class="d-box-title" x="284" y="82" text-anchor="middle">本地写守卫</text>
+          <text class="d-box-note" x="284" y="102" text-anchor="middle">Host · Origin</text>
+          <text class="d-box-note" x="284" y="116" text-anchor="middle">Content-Type: JSON</text>
+
+          <rect class="d-box" x="408" y="56" width="150" height="80" rx="5"/>
+          <text class="d-box-title" x="483" y="82" text-anchor="middle">快照</text>
+          <text class="d-box-note" x="483" y="102" text-anchor="middle">受影响路径</text>
+          <text class="d-box-note" x="483" y="116" text-anchor="middle">与将新建的路径</text>
+
+          <rect class="d-box" x="602" y="56" width="150" height="80" rx="5"/>
+          <text class="d-box-title" x="677" y="82" text-anchor="middle">原子写</text>
+          <text class="d-box-note" x="677" y="102" text-anchor="middle">临时文件</text>
+          <text class="d-box-note" x="677" y="116" text-anchor="middle">→ rename</text>
+
+          <rect class="d-box" x="796" y="56" width="144" height="80" rx="5"/>
+          <text class="d-box-title" x="868" y="82" text-anchor="middle">重新扫描</text>
+          <text class="d-box-note" x="868" y="102" text-anchor="middle">矩阵 / 新 etag</text>
+
+          <line class="d-line" x1="160" y1="96" x2="200" y2="96" marker-end="url(#ar2)"/>
+          <line class="d-line" x1="364" y1="96" x2="404" y2="96" marker-end="url(#ar2)"/>
+          <line class="d-line" x1="558" y1="96" x2="598" y2="96" marker-end="url(#ar2)"/>
+          <line class="d-line" x1="752" y1="96" x2="792" y2="96" marker-end="url(#ar2)"/>
+          <text class="d-arrow-label" x="180" y="88" text-anchor="middle">POST</text>
+          <text class="d-arrow-label" x="384" y="88" text-anchor="middle">通过</text>
+          <text class="d-arrow-label" x="578" y="88" text-anchor="middle">已备份</text>
+          <text class="d-arrow-label" x="772" y="88" text-anchor="middle">写盘</text>
+
+          <line class="d-line" x1="384" y1="96" x2="384" y2="192" marker-end="url(#ar2)"/>
+          <text class="d-arrow-label" x="392" y="176">etag 冲突</text>
+          <rect class="d-outcome" x="274" y="196" width="220" height="56" rx="5"/>
+          <text class="d-outcome-title" x="384" y="218" text-anchor="middle">409 · 不写盘</text>
+          <text class="d-outcome-note" x="384" y="236" text-anchor="middle">保留草稿，等待重新载入</text>
+
+          <line class="d-line" x1="677" y1="136" x2="677" y2="192" marker-end="url(#ar2)"/>
+          <text class="d-arrow-label" x="685" y="176">写入失败</text>
+          <rect class="d-outcome" x="580" y="196" width="250" height="56" rx="5"/>
+          <text class="d-outcome-title" x="705" y="218" text-anchor="middle">按快照还原</text>
+          <text class="d-outcome-note" x="705" y="236" text-anchor="middle">恢复原内容，删除本次新建项</text>
+        </svg>
+      </div>
+      <figcaption>
+        图 2 · 一次写入的五步，以及两条退出路径：etag 冲突时不落盘；写盘失败时用快照恢复。还原前会再建一份安全快照。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>商店：先隔离，再进源</h2>
+    <p>
+      skill 与 MCP 的安装都从注册表开始，但进入源之前各有一道隔离。skill 先读 manifest，把 ZIP 下载到 <code>data/tmp</code>，校验 sha256、ZIP 结构、必须包含 <code>SKILL.md</code>、路径不许越界，全部通过才整体 move 进源；MCP 在安装弹窗里补齐注册表要求的必填变量，然后写归一化定义并同步。两边同名已存在时都返回 409，不覆盖。
+    </p>
+    <figure class="diagram diagram--store">
+      <div class="scroll">
+        <svg viewBox="0 0 960 360" role="img" aria-label="skill 与 MCP 两条安装路径：skill 先下载到临时目录校验后移入源，MCP 补齐变量后写入源并同步">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 Z" class="d-arrow"/>
+            </marker>
+          </defs>
+
+          <text class="d-lane" x="20" y="40">Skill 安装</text>
+
+          <rect class="d-box" x="20" y="56" width="140" height="84" rx="5"/>
+          <text class="d-box-title" x="90" y="80" text-anchor="middle">skillstore.io</text>
+          <text class="d-box-note" x="90" y="100" text-anchor="middle">skill 注册表</text>
+
+          <rect class="d-box" x="208" y="56" width="180" height="84" rx="5"/>
+          <text class="d-box-title" x="298" y="80" text-anchor="middle">GET manifest</text>
+          <text class="d-box-note" x="298" y="100" text-anchor="middle">名字 · 下载 URL</text>
+          <text class="d-box-note" x="298" y="116" text-anchor="middle">sha256</text>
+
+          <rect class="d-box" x="436" y="56" width="200" height="84" rx="5"/>
+          <text class="d-box-title" x="536" y="80" text-anchor="middle">data/tmp 校验</text>
+          <text class="d-box-note" x="536" y="100" text-anchor="middle">sha256 · ZIP · SKILL.md</text>
+          <text class="d-box-note" x="536" y="116" text-anchor="middle">路径不越界</text>
+
+          <rect class="d-box" x="684" y="56" width="236" height="84" rx="5"/>
+          <text class="d-box-title" x="802" y="80" text-anchor="middle">整体 move 进源</text>
+          <text class="d-box-note-mono" x="802" y="100" text-anchor="middle">~/.agents/skills</text>
+          <text class="d-box-note" x="802" y="116" text-anchor="middle">再建 junction 链接到所选 agent</text>
+
+          <line class="d-line" x1="160" y1="98" x2="204" y2="98" marker-end="url(#ar3)"/>
+          <line class="d-line" x1="388" y1="98" x2="432" y2="98" marker-end="url(#ar3)"/>
+          <line class="d-line" x1="636" y1="98" x2="680" y2="98" marker-end="url(#ar3)"/>
+          <text class="d-arrow-label" x="182" y="90" text-anchor="middle">请求</text>
+          <text class="d-arrow-label" x="410" y="90" text-anchor="middle">下载</text>
+          <text class="d-arrow-label" x="658" y="90" text-anchor="middle">校验通过</text>
+
+          <text class="d-lane" x="20" y="196">MCP 安装</text>
+
+          <rect class="d-box" x="20" y="212" width="140" height="84" rx="5"/>
+          <text class="d-box-title" x="90" y="236" text-anchor="middle">MCP Registry</text>
+          <text class="d-box-note" x="90" y="256" text-anchor="middle">官方注册表</text>
+
+          <rect class="d-box" x="208" y="212" width="180" height="84" rx="5"/>
+          <text class="d-box-title" x="298" y="236" text-anchor="middle">安装弹窗</text>
+          <text class="d-box-note" x="298" y="256" text-anchor="middle">env / header / URL</text>
+          <text class="d-box-note" x="298" y="272" text-anchor="middle">必填变量</text>
+
+          <rect class="d-box" x="436" y="212" width="200" height="84" rx="5"/>
+          <text class="d-box-title" x="536" y="236" text-anchor="middle">写 servers.json</text>
+          <text class="d-box-note-mono" x="536" y="256" text-anchor="middle">~/.agents/mcp/servers.json</text>
+
+          <rect class="d-box" x="684" y="212" width="236" height="84" rx="5"/>
+          <text class="d-box-title" x="802" y="236" text-anchor="middle">同步副本</text>
+          <text class="d-box-note" x="802" y="256" text-anchor="middle">Claude · Codex · pi</text>
+          <text class="d-box-note" x="802" y="272" text-anchor="middle">按各自格式</text>
+
+          <line class="d-line" x1="160" y1="254" x2="204" y2="254" marker-end="url(#ar3)"/>
+          <line class="d-line" x1="388" y1="254" x2="432" y2="254" marker-end="url(#ar3)"/>
+          <line class="d-line" x1="636" y1="254" x2="680" y2="254" marker-end="url(#ar3)"/>
+          <text class="d-arrow-label" x="182" y="246" text-anchor="middle">搜索</text>
+          <text class="d-arrow-label" x="410" y="246" text-anchor="middle">补齐变量</text>
+          <text class="d-arrow-label" x="658" y="246" text-anchor="middle">写源</text>
+
+          <text class="d-note" x="20" y="330">同名已存在 → 409，不覆盖；skill 失败会清空 data/tmp，源里不留半成品。</text>
+        </svg>
+      </div>
+      <figcaption>
+        图 3 · skill 先下载校验再进源，MCP 先补变量再写源；两条路径失败都不会留下半个条目。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>边界</h2>
+    <ul class="boundaries">
+      <li>
+        <strong>扫描只读。</strong>
+        <span>页面上的数字必须能在磁盘上复现；缓存页的清理是移动到回收站，不是删除。</span>
+      </li>
+      <li>
+        <strong>写操作可回滚。</strong>
+        <span>配置写前快照，缓存清理进回收站；只有「清空回收站」是不可逆动作。</span>
+      </li>
+      <li>
+        <strong>商店不执行内容。</strong>
+        <span>skill 不会被运行，MCP server 不会被启动，同名条目不覆盖。</span>
+      </li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span>代码：server/app.ts（扫描与路由）</span>
+    <span>server/snapshot.ts（快照）</span>
+    <span>server/store.ts（两个注册表客户端）</span>
+    <span>验证：196 个服务端测试 · 70 项界面检查</span>
+  </footer>
+</main>
+
+</body>
+</html>

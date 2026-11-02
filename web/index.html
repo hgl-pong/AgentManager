@@ -3,7 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>AgentManager</title>
+    <script>
+      // Apply a stored theme before the first paint so a dark window never flashes white.
+      try {
+        const mode = localStorage.getItem('agentmanager.theme');
+        if (mode === 'dark' || mode === 'light') {
+          document.documentElement.dataset.theme = mode;
+          document.documentElement.style.colorScheme = mode;
+        }
+      } catch {
+        // Storage can be unavailable in a private window; the default theme still works.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

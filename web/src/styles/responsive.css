@@ -1,0 +1,350 @@
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .page-head {
+    padding: 12px var(--gutter);
+  }
+
+  .settings-body {
+    grid-template-columns: 176px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 960px) {
+  body {
+    overflow: auto;
+    overflow-x: hidden;
+  }
+
+  .app-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  /* Sidebar folds into a top bar: brand and tabs on one line, status as a strip. */
+  .sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 10px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+
+  .brand {
+    flex: none;
+    padding: 0;
+  }
+
+  .side-nav {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .nav-list {
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .nav-group {
+    display: contents;
+  }
+
+  .nav-group-label {
+    display: none;
+  }
+
+  .nav-group + .nav-group {
+    margin-top: 0;
+  }
+
+  .side-link {
+    width: auto;
+    height: 34px;
+    flex: none;
+    padding: 0 10px;
+  }
+
+  .nav-badge {
+    margin-left: 0;
+  }
+
+  .side-agents {
+    flex-basis: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--sidebar-border);
+  }
+
+  .side-agents h2 {
+    display: none;
+  }
+
+  .side-summary {
+    flex-direction: row;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .side-attention {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 4px 8px;
+  }
+
+  .side-attention-label {
+    margin: 0;
+  }
+
+  .side-attention-list {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .side-attention button.link-button {
+    width: auto;
+    height: 24px;
+    padding: 0 4px;
+  }
+
+  .side-agents ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    padding: 0;
+  }
+
+  .side-agent {
+    align-items: center;
+  }
+
+  .status-dot {
+    margin-top: 0;
+  }
+
+  .side-agent-copy {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .side-error {
+    flex-basis: 100%;
+    padding: 0;
+  }
+
+  .side-foot {
+    flex-basis: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+  }
+
+  .side-foot button {
+    width: auto;
+  }
+
+  .app-main {
+    overflow: visible;
+  }
+
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .head-tools {
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .workspace {
+    overflow: visible;
+    padding: 16px 16px 56px;
+  }
+
+  .settings-body {
+    grid-template-columns: 1fr;
+  }
+
+  .save-bar {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .page-head h1 {
+    font-size: var(--fs-lg);
+  }
+
+  .head-tools {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .theme-switch {
+    justify-content: center;
+  }
+
+  .sidebar {
+    padding: 10px 12px;
+    gap: 8px 10px;
+  }
+
+  .workspace {
+    padding: 14px 16px 56px;
+  }
+
+  .model-picker-panel {
+    position: static;
+    margin-top: 6px;
+    max-height: 320px;
+  }
+
+  .agent-switch {
+    flex-direction: column;
+    border-bottom: 0;
+  }
+
+  .agent-tab {
+    flex-basis: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .agent-tab.is-active {
+    border-color: var(--border-strong);
+    background: var(--surface);
+  }
+
+  .settings-tools {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .brand-copy span {
+    display: none;
+  }
+
+  /* Keep the folded top bar to two rows on phones: drop the status detail,
+     keep the attention links and the quit action. */
+  .side-agents {
+    flex-basis: auto;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .side-summary,
+  .side-agents ul {
+    display: none;
+  }
+
+  .side-foot {
+    flex-basis: auto;
+    margin-left: auto;
+    padding-top: 0;
+  }
+
+  .side-foot .side-version code {
+    display: none;
+  }
+
+  .form-grid,
+  .cards,
+  .hook-definitions,
+  .mcpm-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-control {
+    max-width: none;
+  }
+
+  .conflict,
+  .save-bar,
+  .mcpm-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .confirm-dialog-actions,
+  .confirm-actions {
+    flex-wrap: wrap;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .editor-actions,
+  .snapshots header,
+  .snapshot-list li,
+  .raw-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mcp-add .control {
+    max-width: none;
+  }
+
+  .map-key {
+    flex-basis: 100%;
+  }
+
+  .keys li {
+    flex-wrap: wrap;
+  }
+
+  .toast {
+    left: 16px;
+    right: 16px;
+    bottom: 104px;
+    max-width: none;
+  }
+
+  .store-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .store-search .control {
+    max-width: none;
+  }
+
+  .store-lang {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

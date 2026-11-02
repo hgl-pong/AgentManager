@@ -1,0 +1,226 @@
+/* ==========================================================================
+   AgentManager — design tokens
+   Plain local tool: neutral greys, thin rules, one restrained accent, small
+   square corners and no resting shadows. The sidebar shares the page plane in
+   both themes instead of acting as a separate dark panel. Colour is assigned
+   in exactly three places (light root, dark media query, dark attribute);
+   every other file references tokens.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* canvas & surfaces */
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eceef1;
+  --surface-sunken: #eef0f2;
+
+  /* rules */
+  --border: #dcdfe3;
+  --border-strong: #b9bec5;
+
+  /* text (--text-dim is ≥5:1 on both --surface and --surface-2) */
+  --text: #191b1f;
+  --text-muted: #4b5158;
+  --text-dim: #6d747c;
+
+  /* accent */
+  --accent: #1f6feb;
+  --accent-strong: #175ac6;
+  --accent-contrast: #ffffff;
+
+  /* the single filled action for a page */
+  --primary-bg: #1f6feb;
+  --primary-bg-hover: #1a60d0;
+  --primary-text: #ffffff;
+
+  /* semantics */
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+  --warning: #8a5a00;
+  --warning-soft: #fdf6e6;
+  --success: #1a7f45;
+  --success-soft: #eaf6ef;
+  --info: #1f6feb;
+
+  /* sidebar: same plane as the page, separated by a rule */
+  --sidebar-bg: #f3f4f6;
+  --sidebar-raised: #ffffff;
+  --sidebar-border: #dcdfe3;
+  --sidebar-text: #191b1f;
+  --sidebar-muted: #4b5158;
+  --sidebar-dim: #6d747c;
+  --sidebar-active: #e5e8ec;
+  --sidebar-accent: #1f6feb;
+
+  /* typography */
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', 'Consolas', 'Microsoft YaHei UI', ui-monospace,
+    monospace;
+
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 19px;
+  --fs-2xl: 24px;
+
+  --lh-tight: 1.2;
+  --lh-snug: 1.4;
+  --lh-normal: 1.55;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --tracking-tight: -0.02em;
+
+  /* spacing, 4px base */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* radius */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-full: 999px;
+
+  /* no resting shadows; only overlays lift */
+  --shadow-md: 0 4px 12px -8px rgba(20, 20, 15, 0.2);
+  --shadow-pop: 0 24px 60px -24px rgba(20, 20, 15, 0.35), 0 2px 8px rgba(20, 20, 15, 0.08);
+
+  --scrim: rgba(12, 12, 9, 0.45);
+  --ring: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+
+  /* layout */
+  --sidebar-width: 244px;
+  --page-head-height: 56px;
+  --content-max: 1400px;
+  --gutter: clamp(16px, 2vw, 28px);
+  --row-height: 38px;
+  --control-height: 32px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+
+  /* layers */
+  --z-sticky: 10;
+  --z-sidebar: 20;
+  --z-popover: 40;
+  --z-dialog: 60;
+  --z-toast: 70;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --bg: #101214;
+    --surface: #17191c;
+    --surface-2: #1e2125;
+    --surface-3: #262a2f;
+    --surface-sunken: #0c0e10;
+
+    --border: #2b2f34;
+    --border-strong: #454b52;
+
+    --text: #e6e8eb;
+    --text-muted: #aeb4bb;
+    --text-dim: #858c94;
+
+    --accent: #6ea8fe;
+    --accent-strong: #9cc3ff;
+    --accent-contrast: #10141a;
+
+    --primary-bg: #2f6feb;
+    --primary-bg-hover: #4a84f0;
+    --primary-text: #ffffff;
+
+    --danger: #f07a72;
+    --danger-soft: #2b1715;
+    --warning: #dfb266;
+    --warning-soft: #282115;
+    --success: #6fcf97;
+    --success-soft: #12251a;
+    --info: #6ea8fe;
+
+    --sidebar-bg: #141619;
+    --sidebar-raised: #1b1e22;
+    --sidebar-border: #2b2f34;
+    --sidebar-text: #e6e8eb;
+    --sidebar-muted: #aeb4bb;
+    --sidebar-dim: #858c94;
+    --sidebar-active: #23272c;
+    --sidebar-accent: #6ea8fe;
+
+    --shadow-md: 0 4px 12px -8px rgba(0, 0, 0, 0.7);
+    --shadow-pop: 0 28px 70px -26px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.6);
+
+    --scrim: rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #101214;
+  --surface: #17191c;
+  --surface-2: #1e2125;
+  --surface-3: #262a2f;
+  --surface-sunken: #0c0e10;
+
+  --border: #2b2f34;
+  --border-strong: #454b52;
+
+  --text: #e6e8eb;
+  --text-muted: #aeb4bb;
+  --text-dim: #858c94;
+
+  --accent: #6ea8fe;
+  --accent-strong: #9cc3ff;
+  --accent-contrast: #10141a;
+
+  --primary-bg: #2f6feb;
+  --primary-bg-hover: #4a84f0;
+  --primary-text: #ffffff;
+
+  --danger: #f07a72;
+  --danger-soft: #2b1715;
+  --warning: #dfb266;
+  --warning-soft: #282115;
+  --success: #6fcf97;
+  --success-soft: #12251a;
+  --info: #6ea8fe;
+
+  --sidebar-bg: #141619;
+  --sidebar-raised: #1b1e22;
+  --sidebar-border: #2b2f34;
+  --sidebar-text: #e6e8eb;
+  --sidebar-muted: #aeb4bb;
+  --sidebar-dim: #858c94;
+  --sidebar-active: #23272c;
+  --sidebar-accent: #6ea8fe;
+
+  --shadow-md: 0 4px 12px -8px rgba(0, 0, 0, 0.7);
+  --shadow-pop: 0 28px 70px -26px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.6);
+
+  --scrim: rgba(0, 0, 0, 0.6);
+}

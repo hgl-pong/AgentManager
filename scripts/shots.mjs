@@ -208,6 +208,14 @@ try {
         // The registry answers over the network, so wait for rows instead of a fixed sleep.
         await waitFn(`document.querySelector('.store-card, .mcpm-empty, .store-page .error, .store-page .warning')`, 300);
         await sleep(400);
+        await shot(`${theme}-store-top`);
+        // The preview dialog is the card's primary click target; capture it before the grid.
+        await evaluate(`document.querySelector('.store-card')?.click(); return true;`);
+        await waitFn(`document.querySelector('dialog.store-detail-dialog')?.open === true`);
+        await sleep(900);
+        await shot(`${theme}-store-detail`);
+        await evaluate(`document.querySelector('dialog.store-detail-dialog').dispatchEvent(new Event('cancel', {cancelable: true})); return true;`);
+        await sleep(300);
         // The pager sits below the fold; bring it into view so the shot proves it is there.
         await evaluate(`document.querySelector('.store-pager')?.scrollIntoView({block: 'center'}); return true;`);
         await sleep(300);
@@ -257,6 +265,34 @@ try {
     await shot(`${theme}-dialog`);
     await evaluate(`document.querySelector('dialog.confirm-dialog').dispatchEvent(new Event('cancel', {cancelable:true})); return true;`);
     await sleep(300);
+  }
+
+  // Phone-width pass: the shell folds into a top bar and page grids collapse.
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 2,
+    mobile: true,
+  });
+  await evaluate(`
+    const button = [...document.querySelectorAll('.theme-switch button')]
+      .find((b) => b.textContent.trim() === '浅色');
+    button?.click();
+    return true;
+  `);
+  for (const tab of ['skills', 'prompts', 'settings', 'store', 'cache']) {
+    await evaluate(`location.hash = '${tab}'; return true;`);
+    await waitFn(`location.hash === '#${tab}'`);
+    if (tab === 'settings') {
+      await waitFn(`document.querySelector('.settings-page')`);
+    }
+    await sleep(tab === 'settings' ? 1200 : 700);
+    if (tab === 'store') {
+      await waitFn(`document.querySelector('.store-card, .mcpm-empty, .store-page .error, .store-page .warning')`, 300);
+      await sleep(400);
+    }
+    await evaluate(`window.scrollTo(0, 0); return true;`);
+    await shot(`mobile-${tab}`);
   }
 } catch (error) {
   console.error('FAILED:', error.message);

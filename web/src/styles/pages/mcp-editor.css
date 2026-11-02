@@ -1,0 +1,178 @@
+/* ==========================================================================
+   MCP editor (settings → MCP servers)
+   Same field language as the settings form: label → control → hint → error.
+   ========================================================================== */
+
+.mcp-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.mcp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.mcp-add {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(140px, 190px) auto;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.mcp-add > .confirm-actions {
+  align-self: end;
+}
+
+.mcp-add > .field-error {
+  grid-column: 1 / -1;
+}
+
+.mcp-add .control {
+  max-width: none;
+  background: var(--surface);
+}
+
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mcp-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.mcp-item.has-error {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+
+.mcp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.mcp-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mcp-title strong {
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+
+.mcp-summary {
+  margin: 0;
+}
+
+.mcp-summary code {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  word-break: break-all;
+}
+
+.server-form {
+  margin-top: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.form-wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.form-field > span:first-child {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+
+.required {
+  color: var(--danger);
+  font-family: var(--font-sans);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+}
+
+.string-map {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.string-map legend {
+  padding: 0 5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+
+.advanced-json textarea {
+  margin-top: 6px;
+}
+
+@media (max-width: 960px) {
+  .mcp-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mcp-add > .confirm-actions {
+    align-self: stretch;
+  }
+
+  .server-form .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

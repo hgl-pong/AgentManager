@@ -214,25 +214,12 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
         });
 
   return (
-    <section>
+    <section className="skills-page">
       <div className="toolbar">
         <p className="meta">
           源 <code>{matrix.source.path}</code> · {matrix.source.skills.length} 个 skill · {matrix.rows.length} 行 ·
           {loading ? ' 扫描中…' : ` 扫描耗时 ${matrix.durationMs}ms`}
         </p>
-        <ul className="legend">
-          {(Object.keys(LABEL) as CellState[]).map((state) => (
-            <li key={state}>
-              <span className={`state-swatch state-${state}`} aria-hidden="true" /> {LABEL[state]}
-            </li>
-          ))}
-          <li>
-            <span aria-hidden="true">≠</span> 副本与源不同
-          </li>
-          {matrix.agents.some((agent) => !agent.detected) && (
-            <li className="muted">灰显列未检测到 agent，相关写操作已禁用</li>
-          )}
-        </ul>
       </div>
 
       {loadError && (
@@ -248,12 +235,28 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
 
       {matrix.agents.length === 0 && <p className="muted">没有配置任何 agent，无法显示 skill 分布。</p>}
       {matrix.rows.length === 0 && (
-        <p className="muted">
-          源目录里还没有 skill。可以从<a href="#store">技能商店</a>安装一个，或把某个 agent 目录里已有的 skill 复制进源后重新扫描。
-        </p>
+        <div className="card empty-state">
+          <p>
+            源目录里还没有 skill。可以从<a href="#store">技能商店</a>安装一个，或把某个 agent 目录里已有的 skill
+            复制进源后重新扫描。
+          </p>
+        </div>
       )}
-      {matrix.agents.some((agent) => agent.detected) && (
-        <div className="legend-bar">
+      <div className="legend-bar">
+        <ul className="legend">
+          {(Object.keys(LABEL) as CellState[]).map((state) => (
+            <li key={state}>
+              <span className={`state-swatch state-${state}`} aria-hidden="true" /> {LABEL[state]}
+            </li>
+          ))}
+          <li>
+            <span aria-hidden="true">≠</span> 副本与源不同
+          </li>
+          {matrix.agents.some((agent) => !agent.detected) && (
+            <li className="muted">灰显列未检测到 agent，相关写操作已禁用</li>
+          )}
+        </ul>
+        {matrix.agents.some((agent) => agent.detected) && (
           <ul className="legend" aria-label="按 agent 筛选">
             {matrix.agents.map((agent) => {
               const attention = matrix.rows.filter((row) => {
@@ -277,16 +280,17 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
               );
             })}
           </ul>
-          {onlyAgent !== null && (
-            <button type="button" className="legend-clear" onClick={() => setOnlyAgent(null)}>
-              显示全部 {matrix.rows.length} 行
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        {onlyAgent !== null && (
+          <button type="button" className="legend-clear" onClick={() => setOnlyAgent(null)}>
+            显示全部 {matrix.rows.length} 行
+          </button>
+        )}
+      </div>
       {matrix.rows.length > 0 && (
         <div className="table-wrap">
           <table>
+            <caption className="sr-only">每个 skill 在源与各 agent 中的链接状态</caption>
             <thead>
               <tr>
                 <th scope="col">skill</th>

@@ -80,17 +80,21 @@ export function SnapshotsPanel({ version, onRestored }: { version: number; onRes
   }
 
   return (
-    <section className="snapshots">
+    <section className="snapshots snapshots-panel">
       <header>
+        <h2>最近操作</h2>
+        <span className="meta">
+          {loading && items.length === 0 ? '读取中…' : `${items.length} 个快照`}
+        </span>
+        {notice && <span className="notice inline">{notice}</span>}
         <button
           type="button"
           className="link-button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
-          {open ? '▾' : '▸'} 快照（{loading && items.length === 0 ? '…' : items.length}）
+          {open ? '收起' : '展开'}
         </button>
-        {notice && <span className="notice inline">{notice}</span>}
       </header>
       {confirmNode}
 

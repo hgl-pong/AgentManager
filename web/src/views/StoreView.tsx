@@ -59,10 +59,12 @@ export function StoreView({
   version,
   agents,
   onChanged,
+  onOpenSkills,
 }: {
   version: number;
   agents: AgentOption[];
   onChanged: () => void;
+  onOpenSkills: () => void;
 }) {
   const [lang, setLang] = useState<StoreLang>(() => loadStoreLang());
   const [kind, setKind] = useState<StoreKind>('skill');
@@ -77,6 +79,8 @@ export function StoreView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Only a skill install can be followed up on the Skills page; MCP installs sync in place.
+  const [noticeHasLinks, setNoticeHasLinks] = useState(false);
   const [installing, setInstalling] = useState<StoreMcpServer | null>(null);
   const [detail, setDetail] = useState<StoreDetailTarget | null>(null);
   // null means "follow whatever is detected": a new agent is then linked without extra clicks.
@@ -266,6 +270,7 @@ export function StoreView({
             t('noticeSnapshot', result.snapshotId),
           ];
           setNotice(parts.join(' · '));
+          setNoticeHasLinks(true);
           onChanged();
         } finally {
           setBusy(null);
@@ -302,6 +307,7 @@ export function StoreView({
       ...(result.snapshotIds.length > 0 ? [t('noticeSnapshot', result.snapshotIds.join('、'))] : []),
     ];
     setNotice(parts.join(' · '));
+    setNoticeHasLinks(false);
     onChanged();
   }
 
@@ -435,7 +441,16 @@ export function StoreView({
           </button>
         </div>
       )}
-      {notice && <p className="notice">{notice}</p>}
+      {notice && (
+        <p className="notice">
+          {notice}
+          {noticeHasLinks && (
+            <button type="button" className="link-button notice-link" onClick={onOpenSkills}>
+              {t('noticeCheckLinks')}
+            </button>
+          )}
+        </p>
+      )}
       {confirmNode}
       {detail && (
         <StoreDetailDialog
@@ -546,18 +561,23 @@ export function StoreView({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        className={item.inSource ? 'store-action is-installed' : 'store-action'}
-                        disabled={item.inSource || busy !== null}
-                        title={item.inSource ? t('inSourceTitle') : undefined}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          requestInstall(item);
-                        }}
-                      >
-                        {item.inSource ? t('inSource') : busy === item.id ? t('installing') : t('install')}
-                      </button>
+                      {item.inSource ? (
+                        <span className="store-action is-installed" title={t('inSourceTitle')}>
+                          {t('inSource')}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="store-action"
+                          disabled={busy !== null}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestInstall(item);
+                          }}
+                        >
+                          {busy === item.id ? t('installing') : t('install')}
+                        </button>
+                      )}
                     </footer>
                   </article>
                 );
@@ -609,25 +629,25 @@ export function StoreView({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        className={item.inSource ? 'store-action is-installed' : 'store-action'}
-                        disabled={item.inSource || !canInstall}
-                        title={
-                          item.inSource
-                            ? t('mcpInSourceTitle')
-                            : canInstall
-                              ? undefined
-                              : t('mcpNoOptionsTitle')
-                        }
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setNotice(null);
-                          setInstalling(item);
-                        }}
-                      >
-                        {item.inSource ? t('inSource') : canInstall ? t('install') : t('mcpNoOptions')}
-                      </button>
+                      {item.inSource ? (
+                        <span className="store-action is-installed" title={t('mcpInSourceTitle')}>
+                          {t('inSource')}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="store-action"
+                          disabled={!canInstall}
+                          title={canInstall ? undefined : t('mcpNoOptionsTitle')}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setNotice(null);
+                            setInstalling(item);
+                          }}
+                        >
+                          {canInstall ? t('install') : t('mcpNoOptions')}
+                        </button>
+                      )}
                     </footer>
                   </article>
                 );

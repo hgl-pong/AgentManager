@@ -145,6 +145,7 @@ export function StoreMcpInstallDialog({
     <dialog
       ref={ref}
       className="confirm-dialog store-mcp-dialog"
+      data-size="md"
       tabIndex={-1}
       aria-labelledby={titleId}
       onCancel={(event) => {
@@ -157,30 +158,47 @@ export function StoreMcpInstallDialog({
     >
       <form onSubmit={submit} noValidate>
         <h2 id={titleId}>{fill(pick(lang, { zh: '安装 %s', en: 'Install %s' }), item.name)}</h2>
-        <div className="confirm-dialog-body">
-          <p>
+        <div className="confirm-dialog-body store-mcp-body">
+          <p className="store-mcp-id">
             <code>{item.id}</code>
             {item.version ? ` · v${item.version}` : ''}
           </p>
 
-          <div className="mcpm-form-grid store-mcp-fields">
-            {item.options.length > 1 && (
-              <label className="mcpm-field wide">
-                <span>{pick(lang, STORE_TEXT.mcpOption)}</span>
-                <select
-                  className="control"
-                  value={optionId}
-                  onChange={(event) => chooseOption(event.target.value)}
-                >
-                  {item.options.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+          <section className="store-mcp-section">
+            <h3 className="store-mcp-section-title">{pick(lang, STORE_TEXT.mcpOption)}</h3>
+            <div
+              className="store-mcp-options"
+              role="radiogroup"
+              aria-label={pick(lang, STORE_TEXT.mcpOption)}
+            >
+              {item.options.map((candidate) => {
+                const selected = candidate.id === optionId;
+                return (
+                  <label
+                    className={selected ? 'store-mcp-option is-selected' : 'store-mcp-option'}
+                    key={candidate.id}
+                  >
+                    <input
+                      type="radio"
+                      name="store-mcp-option"
+                      value={candidate.id}
+                      checked={selected}
+                      onChange={() => chooseOption(candidate.id)}
+                    />
+                    <span className="store-mcp-option-copy">
+                      <span className="store-mcp-option-head">
+                        <strong>{candidate.label}</strong>
+                        <span className="tag">{candidate.transport}</span>
+                      </span>
+                      <code className="store-mcp-option-command">{previewText(candidate)}</code>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
 
+          <div className="mcpm-form-grid store-mcp-fields">
             <label className="mcpm-field wide">
               <span>{pick(lang, STORE_TEXT.mcpName)}</span>
               <input
@@ -192,7 +210,7 @@ export function StoreMcpInstallDialog({
             </label>
 
             {option.variables.map((variable) => (
-              <label className="mcpm-field wide" key={variableKey(variable)}>
+              <label className="mcpm-field" key={variableKey(variable)}>
                 <span>
                   <code>{variable.name}</code>{' '}
                   <span className="tag">{pick(lang, STORE_TEXT.mcpVariableRequired)}</span>

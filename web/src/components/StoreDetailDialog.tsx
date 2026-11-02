@@ -74,21 +74,6 @@ function SkillDetailBody({ item, lang }: { item: StoreSkill; lang: StoreLang }) 
   const updated = formatDate(detail?.updatedAt ?? item.updatedAt);
   return (
     <>
-      <div className="store-badges">
-        {item.category && <span className="tag">{categoryLabel(lang, item.category)}</span>}
-        {item.risk && (
-          <span className={`tag store-risk store-risk-${item.risk}`}>{riskLabel(lang, item.risk)}</span>
-        )}
-        {item.quality !== undefined && (
-          <span className="tag">
-            {t('quality')} {item.quality}
-          </span>
-        )}
-        {item.hasScripts && <span className="tag">{t('scripts')}</span>}
-        {item.needsNetwork && <span className="tag">{t('network')}</span>}
-        {item.license && <span className="tag">{item.license}</span>}
-      </div>
-
       {item.summary !== '' && <p className="store-detail-summary">{item.summary}</p>}
 
       <dl className="store-detail-meta">
@@ -198,20 +183,10 @@ function SkillDetailBody({ item, lang }: { item: StoreSkill; lang: StoreLang }) 
 /** The registry entry already carries everything the card needs; this lays it out in full. */
 function McpDetailBody({ item, lang }: { item: StoreMcpServer; lang: StoreLang }) {
   const t = (key: keyof typeof STORE_TEXT) => pick(lang, STORE_TEXT[key]);
-  const transports = [...new Set(item.options.map((option) => option.transport))];
   const updated = formatDate(item.updatedAt);
 
   return (
     <>
-      <div className="store-badges">
-        {transports.map((transport) => (
-          <span className="tag" key={transport}>
-            {transport}
-          </span>
-        ))}
-        {item.inSource && <span className="tag">{t('inSource')}</span>}
-      </div>
-
       {item.summary !== '' && <p className="store-detail-summary">{item.summary}</p>}
 
       <dl className="store-detail-meta">
@@ -311,6 +286,8 @@ export function StoreDetailDialog({
     : !canInstall
       ? t('mcpNoOptionsTitle')
       : undefined;
+  const transports =
+    target.kind === 'mcp' ? [...new Set(target.item.options.map((option) => option.transport))] : [];
 
   useEffect(() => {
     const dialog = ref.current;
@@ -329,6 +306,7 @@ export function StoreDetailDialog({
     <dialog
       ref={ref}
       className="confirm-dialog store-detail-dialog"
+      data-size="lg"
       tabIndex={-1}
       aria-labelledby={titleId}
       onCancel={(event) => {
@@ -340,11 +318,53 @@ export function StoreDetailDialog({
       }}
     >
       <div className="store-detail-head">
-        <div className="store-title">
-          <h2 id={titleId}>{item.name}</h2>
-          <span className="store-owner">{owner}</span>
+        <div className="store-detail-head-main">
+          <div className="store-title">
+            <h2 id={titleId}>{item.name}</h2>
+            <span className="store-owner">{owner}</span>
+          </div>
+          <div className="store-badges">
+            {item.version && <span className="tag">v{item.version}</span>}
+            {target.kind === 'skill' ? (
+              <>
+                {target.item.category && (
+                  <span className="tag">{categoryLabel(lang, target.item.category)}</span>
+                )}
+                {target.item.risk && (
+                  <span className={`tag store-risk store-risk-${target.item.risk}`}>
+                    {riskLabel(lang, target.item.risk)}
+                  </span>
+                )}
+                {target.item.quality !== undefined && (
+                  <span className="tag">
+                    {t('quality')} {target.item.quality}
+                  </span>
+                )}
+                {target.item.hasScripts && <span className="tag">{t('scripts')}</span>}
+                {target.item.needsNetwork && <span className="tag">{t('network')}</span>}
+                {target.item.license && <span className="tag">{target.item.license}</span>}
+              </>
+            ) : (
+              <>
+                {transports.map((transport) => (
+                  <span className="tag" key={transport}>
+                    {transport}
+                  </span>
+                ))}
+                {target.item.inSource && <span className="tag">{t('inSource')}</span>}
+              </>
+            )}
+          </div>
         </div>
-        {item.version && <span className="tag">v{item.version}</span>}
+        <button
+          ref={closeRef}
+          type="button"
+          className="store-detail-close"
+          aria-label={t('detailClose')}
+          onClick={onClose}
+        >
+          ×
+        </button>
       </div>
 
       <div className="confirm-dialog-body store-detail-body">
@@ -356,7 +376,7 @@ export function StoreDetailDialog({
       </div>
 
       <div className="confirm-dialog-actions">
-        <button ref={closeRef} type="button" onClick={onClose}>
+        <button type="button" onClick={onClose}>
           {t('detailClose')}
         </button>
         <button

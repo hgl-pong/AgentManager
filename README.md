@@ -21,7 +21,7 @@
 - 点卡片本身（不是「安装」）先打开预览：skill 会即时读取完整记录——完整描述、能力 / 限制 / 使用场景、文件结构、安全审查摘要、风险因素、仓库与下载收藏数；MCP server 列出全部安装方式、每个方式要填的变量以及仓库 / 官网。预览底部也能直接安装，键盘 `Enter` / 空格同样能打开。
 - Skills 一页 24 个，底部「上一页 / 下一页」带「第 N / M 页」（M 是注册表给出的总页数，热门目录 280 页左右）；换页会自动滚回列表顶部，换关键词或点「热门」会回到第 1 页。
 - MCP 的源是官方 Registry：它只按名称搜索且至少 3 个字符，没有总数、按游标翻页，所以底部只显示「第 N 页」。卡片上是 server 的反向域名名、标题、描述与可用的传输方式。
-- 页右上「中文 / English / 双语」切换整个商店页的文案（默认双语，选择记在本地）；skill 与 MCP server 自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
+- 页右上「中文 / English / 双语」切换整个商店页的文案（默认中文，选择记在本地）；skill 与 MCP server 自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
 - 「安装后链接到 / 同步到」勾选目标 agent（默认跟随已检测到的 agent）。Skills 卡片上的「安装」先弹确认框，写明要下的 `owner/slug`、落地的绝对路径、会建哪些链接，以及发布者 / 风险 / 质量；带脚本的 skill 会单独提醒。
 - MCP 卡片上的「安装」打开安装弹窗：可选 `npm` / `pypi` / `oci` 包或 `http` / `sse` 远端地址，改名后写入源；注册表标为必填且没有默认值的 env / header / URL 变量在这里填写（密钥用密码框），`Bearer {token}` 这类值里的占位符同样逐个列出、安装时替换，默认值已自动带好。sse 会提示 Codex 与 pi 不支持。
 - Skills 安装分两步：先读 `…/manifest` 拿到下载地址和 sha256，再下 ZIP 到 `data/tmp/` 校验（校验值、ZIP 头、必须有 `SKILL.md`、路径不许越界），最后整体 `move` 进源目录；任何一步失败都不会在源里留下半个 skill。
@@ -98,14 +98,14 @@ npm test        # node:test，含一套起真实服务的端到端用例
 npm run typecheck
 npm run check   # 两者一起跑
 npm run verify:ui  # 先用 npm run build 构建；用无头 Edge/Chrome 跑交互检查（确认弹框、Ctrl+S、模型选择器等）
-npm run shots      # 同上构建后，把每个页签的明暗两套截图写到 .build/shots/，用于肉眼核对样式
+npm run shots      # 同上构建后，把每页明暗两套、商店预览与 390px 手机视图截图写到 .build/shots/，用于肉眼核对样式
 ```
 
 ## 目录
 
 ```
 server/     扫描、写操作、提示词、配置、设置读写、商店（skill 与 MCP）、缓存与回收站、快照、启动器，以及 HTTP 路由
-web/        React 单页（左侧导航 + skills / 商店 / 提示词 / 设置 / 缓存视图）
+web/        React 单页（分组侧栏 + Skills / 商店 / 提示词 / MCP / Hooks / 缓存 / 设置）
 shared/     服务端与前端共用的 API 契约
 schemas/    Claude Code / Codex / pi 的官方配置 schema（settings catalog 的来源）
 scripts/    独立 exe 构建/验证、schema catalog 生成与 Windows 快捷方式安装
@@ -113,7 +113,7 @@ release/    独立程序产物（git 忽略）
 data/       快照、回收站与运行状态（git 忽略）
 ```
 
-约定与决策记录在 `goal-and-requirements.md`、`architecture.md`、`server/SPEC*.md`。
+约定与决策记录在 `goal-and-requirements.md`、`architecture.md`、`server/SPEC*.md`；界面功能清单与重设计说明在 `docs/ui-redesign-brief.md`。
 
 ## 边界
 

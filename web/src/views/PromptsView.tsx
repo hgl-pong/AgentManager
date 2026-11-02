@@ -291,7 +291,7 @@ export function PromptsView({
   const bytes = new TextEncoder().encode(content).length;
 
   return (
-    <section>
+    <section className="prompts-page">
       <div className="toolbar">
         <p className="meta">
           单一源 <code>{report.source.path}</code> · {report.source.exists ? `${report.source.bytes} 字节` : '尚未建立'}
@@ -345,9 +345,12 @@ export function PromptsView({
               setContent(event.target.value);
             }}
             spellCheck={false}
-            rows={16}
+            rows={18}
             placeholder="在这里编辑所有 agent 共享的全局提示词…"
           />
+          <p className="meta">
+            硬链接目标会立即读取新内容；如果是独立副本，保存后会显示「与源不同」，点对应 agent 的「对齐到源」即可。
+          </p>
           <div className="editor-actions">
             <span className="meta">
               {bytes} 字节 · {dirty ? '有未保存的修改' : '已与磁盘一致'}
@@ -387,63 +390,66 @@ export function PromptsView({
               </button>
             </span>
           </div>
-          <p className="meta">
-            硬链接目标会立即读取新内容；如果是独立副本，保存后会显示「与源不同」，点对应 agent 的「对齐到源」即可。
-          </p>
         </article>
 
-        {report.targets.length === 0 && <p className="muted">没有配置任何 agent 的提示词目标。</p>}
-        {report.targets.map((target) => (
-          <article className="card" key={target.key}>
-            <header>
-              <h2>{target.label}</h2>
-              <span className={`badge state-${target.state}`}>{STATE_LABEL[target.state]}</span>
-            </header>
-            <p className="path">
-              <code>{target.path}</code>
-            </p>
-            <p className="meta">
-              {target.bytes === undefined ? '无内容' : `${target.bytes} 字节`} · {LINK_LABEL[target.link]}
-            </p>
-            {target.target && <p className="meta">→ {target.target}</p>}
-            <div className="confirm-actions">
-              {target.state !== 'missing' && target.state !== 'no-source' && target.state !== 'broken' && (
-                <button type="button" onClick={() => open(target.path)}>
-                  打开
-                </button>
-              )}
-              {!missingSource && target.state !== 'synced' && (
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => {
-                    setNotice(null);
-                    requestAction({
-                      kind: 'align',
-                      agent: target.key,
-                      label: `让 ${target.label} 指向单一源`,
-                      danger: target.state === 'drift' || target.state === 'external-link',
-                      detail:
-                        target.state === 'drift' || target.state === 'external-link' ? (
-                          <>
-                            会把 <code>{target.path}</code> 换成指向单一源的链接，
-                            该文件当前的独立内容会被源内容覆盖（快照里留有原副本）。
-                          </>
-                        ) : (
-                          <>
-                            会在 <code>{target.path}</code> 建一个指向单一源的链接，
-                            之后修改提示词对所有 agent 同时生效。
-                          </>
-                        ),
-                    });
-                  }}
-                >
-                  对齐到源
-                </button>
-              )}
-            </div>
-          </article>
-        ))}
+        <aside className="prompt-targets" aria-label="链接目标">
+          <header className="prompt-targets-head">
+            <h2>链接目标</h2>
+            <span className="meta">{report.targets.length} 个 agent</span>
+          </header>
+          {report.targets.length === 0 && <p className="muted">没有配置任何 agent 的提示词目标。</p>}
+          {report.targets.map((target) => (
+            <article className="card" key={target.key}>
+              <header>
+                <h2>{target.label}</h2>
+                <span className={`badge state-${target.state}`}>{STATE_LABEL[target.state]}</span>
+              </header>
+              <p className="path" title={target.path}>
+                <code>{target.path}</code>
+              </p>
+              <p className="meta">
+                {target.bytes === undefined ? '无内容' : `${target.bytes} 字节`} · {LINK_LABEL[target.link]}
+              </p>
+              {target.target && <p className="meta">→ {target.target}</p>}
+              <div className="confirm-actions">
+                {target.state !== 'missing' && target.state !== 'no-source' && target.state !== 'broken' && (
+                  <button type="button" onClick={() => open(target.path)}>
+                    打开
+                  </button>
+                )}
+                {!missingSource && target.state !== 'synced' && (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setNotice(null);
+                      requestAction({
+                        kind: 'align',
+                        agent: target.key,
+                        label: `让 ${target.label} 指向单一源`,
+                        danger: target.state === 'drift' || target.state === 'external-link',
+                        detail:
+                          target.state === 'drift' || target.state === 'external-link' ? (
+                            <>
+                              会把 <code>{target.path}</code> 换成指向单一源的链接，
+                              该文件当前的独立内容会被源内容覆盖（快照里留有原副本）。
+                            </>
+                          ) : (
+                            <>
+                              会在 <code>{target.path}</code> 建一个指向单一源的链接，
+                              之后修改提示词对所有 agent 同时生效。
+                            </>
+                          ),
+                      });
+                    }}
+                  >
+                    对齐到源
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </aside>
       </div>
     </section>
   );

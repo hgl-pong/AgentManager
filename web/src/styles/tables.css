@@ -1,0 +1,235 @@
+/* ==========================================================================
+   Tables — dense matrix surface with sticky header and frozen first column
+   ========================================================================== */
+
+.table-wrap {
+  max-width: 100%;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.table-wrap table {
+  min-width: 640px;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table-wrap > table:not([class]) thead th:not(:first-child) {
+  text-align: center;
+}
+
+/* The first column stays put while the matrix scrolls sideways. */
+thead th:first-child {
+  left: 0;
+  z-index: 3;
+  background: var(--surface-2);
+}
+
+tbody th[scope='row'] {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+tbody th,
+tbody td {
+  height: var(--row-height);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  vertical-align: middle;
+}
+
+tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+tbody th[scope='row'] {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+}
+
+tbody tr:hover > td,
+tbody tr:hover > th {
+  background: var(--surface-2);
+}
+
+/* Match the row tint on the frozen cell: it paints over the scrolling body. */
+tbody tr:hover > th[scope='row'] {
+  background: var(--surface-2);
+}
+
+tbody tr:focus-within > td,
+tbody tr:focus-within > th,
+tbody tr:focus-within > th[scope='row'] {
+  background: var(--surface-2);
+}
+
+tbody tr.outside-source th {
+  color: var(--text-muted);
+  font-weight: var(--fw-regular);
+}
+
+.count {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.undetected {
+  color: var(--text-dim);
+}
+
+/* ---------- cell states ---------- */
+
+.cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cell-state {
+  display: inline-block;
+  min-width: 28px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+}
+
+.cell.state-linked .cell-state {
+  color: var(--success);
+}
+
+.cell.state-copy .cell-state {
+  color: var(--text);
+}
+
+.cell.state-broken .cell-state {
+  color: var(--danger);
+}
+
+.cell.state-external .cell-state {
+  color: var(--info);
+}
+
+.cell.state-orphan .cell-state {
+  color: var(--warning);
+}
+
+.cell.state-missing .cell-state {
+  color: var(--text-dim);
+}
+
+.copy {
+  color: var(--info);
+}
+
+.drift {
+  margin-left: 3px;
+  color: var(--warning);
+  font-weight: var(--fw-bold);
+}
+
+.cell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.cell-actions button {
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  opacity: 0.65;
+}
+
+tr:hover button,
+tr:focus-within button {
+  opacity: 1;
+}
+
+.cell-note {
+  display: block;
+  max-width: 160px;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--fs-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text-dim);
+}
+
+.state-swatch.state-linked {
+  background: var(--success);
+}
+
+.state-swatch.state-copy {
+  background: var(--text);
+}
+
+.state-swatch.state-broken {
+  background: var(--danger);
+}
+
+.state-swatch.state-external {
+  background: var(--info);
+}
+
+.state-swatch.state-orphan {
+  background: var(--warning);
+}
+
+.state-swatch.state-missing {
+  background: var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  .table-wrap table {
+    min-width: 560px;
+  }
+}

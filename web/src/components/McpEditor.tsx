@@ -229,45 +229,51 @@ function NewServerForm({
 
   return (
     <div className="mcp-add">
-      <label htmlFor={`${id}-name`}>名称</label>
-      <input
-        id={`${id}-name`}
-        className="control"
-        type="text"
-        value={name}
-        placeholder="例如 filesystem"
-        disabled={disabled}
-        onChange={(event) => {
-          setName(event.target.value);
-          setError(null);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            submit();
-          }
-        }}
-      />
-      <label htmlFor={`${id}-transport`}>传输</label>
-      <select
-        id={`${id}-transport`}
-        className="control"
-        value={transport}
-        disabled={disabled}
-        onChange={(event) => setTransport(event.target.value as McpTransport)}
-      >
-        {transportsFor(agentKey).map((entry) => (
-          <option key={entry} value={entry}>
-            {entry}
-          </option>
-        ))}
-      </select>
-      <button type="button" className="primary" disabled={disabled} onClick={submit}>
-        添加
-      </button>
-      <button type="button" className="secondary" disabled={disabled} onClick={onCancel}>
-        取消
-      </button>
+      <label className="form-field" htmlFor={`${id}-name`}>
+        <span>名称</span>
+        <input
+          id={`${id}-name`}
+          className="control"
+          type="text"
+          value={name}
+          placeholder="例如 filesystem"
+          disabled={disabled}
+          onChange={(event) => {
+            setName(event.target.value);
+            setError(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+      </label>
+      <label className="form-field" htmlFor={`${id}-transport`}>
+        <span>传输</span>
+        <select
+          id={`${id}-transport`}
+          className="control"
+          value={transport}
+          disabled={disabled}
+          onChange={(event) => setTransport(event.target.value as McpTransport)}
+        >
+          {transportsFor(agentKey).map((entry) => (
+            <option key={entry} value={entry}>
+              {entry}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="confirm-actions">
+        <button type="button" className="primary" disabled={disabled} onClick={submit}>
+          添加
+        </button>
+        <button type="button" className="secondary" disabled={disabled} onClick={onCancel}>
+          取消
+        </button>
+      </div>
       {error && <p className="field-error">{error}</p>}
     </div>
   );

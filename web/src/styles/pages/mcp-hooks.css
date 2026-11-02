@@ -1,0 +1,403 @@
+/* ==========================================================================
+   MCP & hooks matrix pages — page layer. Table primitives (sticky first
+   column, header, row height) and the shared legend/control vocabulary live
+   in tables.css and components.css.
+   ========================================================================== */
+
+.mcpm-page,
+.hook-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* ---------- PageToolbar ---------- */
+
+.mcpm-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.mcpm-head-copy {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mcpm-head-copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mcpm-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---------- legend colours ---------- */
+
+.mcpm-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.mcpm-synced {
+  color: var(--success);
+}
+
+.mcpm-drift,
+.mcpm-orphan {
+  color: var(--warning);
+}
+
+.mcpm-missing,
+.mcpm-none {
+  color: var(--text-dim);
+}
+
+.mcpm-invalid {
+  color: var(--danger);
+}
+
+.mcpm-unsupported {
+  color: var(--info);
+}
+
+.mcpm-legend li {
+  color: var(--text-muted);
+}
+
+.mcpm-legend .mcpm-dot {
+  margin-right: 2px;
+}
+
+.hook-legend .mcpm-none {
+  color: var(--text-dim);
+}
+
+.legend-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- DataTable ---------- */
+
+.mcpm-table thead th:first-child {
+  min-width: 200px;
+}
+
+.mcpm-table thead th:not(:first-child) {
+  min-width: 140px;
+  text-align: center;
+}
+
+/* The source column is a single short label, so it does not need agent width. */
+.mcpm-table thead th:nth-child(2) {
+  width: 92px;
+  min-width: 92px;
+}
+
+.mcpm-table thead th:last-child {
+  min-width: 200px;
+  text-align: right;
+}
+
+/* Header labels stay on one line: "Claude Code 11 生效", never a stacked block. */
+.mcpm-table thead .count {
+  display: inline;
+  margin: 0 0 0 6px;
+}
+
+.mcpm-table tbody th[scope='row'] {
+  font-weight: var(--fw-semibold);
+}
+
+.mcpm-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* State is carried by the text colour and the state label, not a filled cell. */
+.mcpm-state {
+  display: block;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.mcpm-source {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.mcpm-source.in {
+  color: var(--text);
+}
+
+.mcpm-summary {
+  display: block;
+  max-width: 200px;
+  margin: 2px auto 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcpm-cell-error {
+  display: block;
+  max-width: 220px;
+  margin: 3px auto 0;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  overflow-wrap: anywhere;
+}
+
+.mcpm-unsupported .mcpm-cell-error {
+  color: var(--info);
+}
+
+.mcpm-table td.mcpm-row-actions {
+  text-align: right;
+}
+
+.mcpm-row-actions .cell-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+/* Row actions stay reachable but stay quiet until the row is hovered or focused. */
+.mcpm-page .cell-actions button,
+.hook-page .cell-actions button {
+  opacity: 0.55;
+}
+
+.mcpm-page tr:hover .cell-actions button,
+.mcpm-page tr:focus-within .cell-actions button,
+.hook-page tr:hover .cell-actions button,
+.hook-page tr:focus-within .cell-actions button {
+  opacity: 1;
+}
+
+/* ---------- empty state ---------- */
+
+.mcpm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.mcpm-empty p {
+  margin: 0;
+}
+
+.mcpm-empty .mcpm-head-actions {
+  margin-top: var(--space-1);
+}
+
+/* ---------- inline form ---------- */
+
+.mcpm-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.mcpm-form .panel-head {
+  align-items: flex-start;
+  padding-bottom: var(--space-3);
+}
+
+.mcpm-form .panel-head p {
+  margin: 2px 0 0;
+}
+
+.mcpm-form .icon-button {
+  flex: 0 0 auto;
+}
+
+.mcpm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.mcpm-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.mcpm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.mcpm-field .control {
+  font-weight: var(--fw-regular);
+}
+
+.mcpm-field .control[readonly] {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.mcpm-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mcpm-sync legend {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+/* The save bar stays in view while the rest of the form scrolls. */
+.mcpm-form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ---------- hooks specifics ---------- */
+
+.hook-page .hook-definitions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.hook-definitions > .hint {
+  grid-column: 1 / -1;
+}
+
+.hook-definition {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.hook-definition legend {
+  padding: 0 4px;
+}
+
+.hook-definition textarea {
+  margin-top: 6px;
+  min-height: 160px;
+}
+
+.hook-definition.is-off {
+  padding: 0;
+  border: 0;
+}
+
+.hook-definition.is-off legend {
+  padding: 0;
+}
+
+.hook-table {
+  min-width: 840px;
+}
+
+.hook-table th:last-child,
+.hook-table td:last-child {
+  min-width: 210px;
+  white-space: nowrap;
+}
+
+.hook-table .mcpm-row-actions .cell-actions button {
+  white-space: nowrap;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 960px) {
+  .mcpm-page .mcpm-head,
+  .hook-page .mcpm-head {
+    align-items: flex-start;
+  }
+
+  .mcpm-page .mcpm-form-grid,
+  .hook-page .mcpm-form-grid,
+  .hook-page .hook-definitions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mcpm-table thead th:first-child {
+    min-width: 180px;
+  }
+}
+
+@media (max-width: 680px) {
+  .mcpm-page .mcpm-head,
+  .hook-page .mcpm-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mcpm-page .mcpm-head-actions,
+  .hook-page .mcpm-head-actions {
+    width: 100%;
+  }
+
+  .mcpm-page .mcpm-form-actions,
+  .hook-page .mcpm-form-actions {
+    justify-content: flex-start;
+  }
+
+  .mcpm-page .table-wrap table {
+    min-width: 760px;
+  }
+
+  .hook-page .table-wrap table {
+    min-width: 820px;
+  }
+}

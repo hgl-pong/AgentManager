@@ -11,6 +11,8 @@ export interface ConfirmDialogProps {
   danger?: boolean;
   /** Failure from the run this dialog started; shown inside it instead of behind the backdrop. */
   error?: string | null;
+  /** Content width: confirmations are small, import/preview flows ask for room. */
+  size?: 'sm' | 'md' | 'lg';
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -27,6 +29,7 @@ export function ConfirmDialog({
   busy = false,
   danger = false,
   error = null,
+  size = 'sm',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -58,6 +61,7 @@ export function ConfirmDialog({
     <dialog
       ref={ref}
       className="confirm-dialog"
+      data-size={size}
       tabIndex={-1}
       aria-labelledby={titleId}
       onCancel={(event) => {

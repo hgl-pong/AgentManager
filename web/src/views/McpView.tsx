@@ -462,7 +462,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
           )}
         </div>
         <div className="mcpm-head-actions">
-          <button type="button" className="primary" onClick={openNew} disabled={disabled}>
+          <button type="button" className="secondary" onClick={openNew} disabled={disabled}>
             新增 server
           </button>
           <button type="button" onClick={importAll} disabled={disabled}>
@@ -533,14 +533,6 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
         <div className="mcpm-empty">
           <p>还没有 MCP server。</p>
           <p className="hint">源和各 agent 的配置里都没有找到 MCP server，可以新增一个，或从现有配置导入。</p>
-          <div className="mcpm-head-actions">
-            <button type="button" className="primary" onClick={openNew} disabled={disabled}>
-              新增 server
-            </button>
-            <button type="button" onClick={importAll} disabled={disabled}>
-              从现有配置导入
-            </button>
-          </div>
         </div>
       ) : (
         <div className="table-wrap">
@@ -715,6 +707,9 @@ function McpForm({ form, agents, formRef, busy, disabled, onPatch, onToggleSync,
           <h2>{title}</h2>
           <p className="meta">保存到源文件；勾选的 agent 会在保存后立即同步。</p>
         </div>
+        <button type="button" className="icon-button" onClick={onCancel} disabled={busy} aria-label="关闭表单">
+          ×
+        </button>
       </header>
 
       <div className="mcpm-form-grid">
@@ -838,11 +833,11 @@ function McpForm({ form, agents, formRef, busy, disabled, onPatch, onToggleSync,
       )}
 
       <div className="mcpm-form-actions">
-        <button type="submit" className="primary" disabled={disabled}>
-          {busy ? '保存中…' : '保存'}
-        </button>
         <button type="button" onClick={onCancel} disabled={busy}>
           取消
+        </button>
+        <button type="submit" className="primary" disabled={disabled}>
+          {busy ? '保存中…' : '保存'}
         </button>
       </div>
     </form>

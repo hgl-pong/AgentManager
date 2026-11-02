@@ -1620,6 +1620,8 @@ export function SettingsView({
                   type="button"
                   className={nav.kind === 'common' ? 'nav-item is-active' : 'nav-item'}
                   aria-current={nav.kind === 'common' ? 'page' : undefined}
+                  title={`已设置 ${commonSet} 项，共 ${commonTotal} 项`}
+                  aria-label={`常用：已设置 ${commonSet} 项，共 ${commonTotal} 项`}
                   onClick={() => chooseNav({ kind: 'common' })}
                 >
                   常用
@@ -1642,6 +1644,8 @@ export function SettingsView({
                       aria-current={
                         nav.kind === 'section' && nav.key === section.key ? 'page' : undefined
                       }
+                      title={`已设置 ${count} 项，共 ${uniqueFields(section.fields).length} 项`}
+                      aria-label={`${section.label}：已设置 ${count} 项，共 ${uniqueFields(section.fields).length} 项`}
                       onClick={() => chooseNav({ kind: 'section', key: section.key })}
                     >
                       {section.label}
@@ -1683,6 +1687,7 @@ export function SettingsView({
             <label className="search-field">
               <span className="sr-only">搜索字段、说明或路径</span>
               <input
+                className="control"
                 type="search"
                 value={search}
                 placeholder="搜索字段、说明或路径…"
@@ -1776,7 +1781,7 @@ export function SettingsView({
               disabled={busy !== null}
               onClick={() => void discardAll()}
             >
-              放弃
+              放弃修改
             </button>
             <button
               type="button"

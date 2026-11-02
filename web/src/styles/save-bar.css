@@ -1,0 +1,101 @@
+/* ==========================================================================
+   Save bar & toast
+   ========================================================================== */
+
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.save-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.save-copy strong {
+  font-size: 13.5px;
+}
+
+.save-copy .meta {
+  font-size: 12px;
+}
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 92px;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.toast-success {
+  border-left-color: var(--success);
+}
+
+.toast-warning {
+  border-left-color: var(--warning);
+}
+
+.toast-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.toast span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast .icon-button {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Dismissing a message deletes nothing: keep the close button neutral instead of the delete red. */
+.toast .icon-button:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+/* The badge counts loaded packages, not install wiring: neutral, and not a status dot. */
+.pkg-count {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.agent-dot.pkg {
+  background: var(--border-strong);
+}
+

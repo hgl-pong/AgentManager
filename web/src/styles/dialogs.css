@@ -1,0 +1,103 @@
+/* ==========================================================================
+   Confirm dialog — one shell, three content sizes
+   ========================================================================== */
+
+.confirm-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(84vh, 900px);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+}
+
+.confirm-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.confirm-dialog[data-size='sm'] {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.confirm-dialog[data-size='md'] {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.confirm-dialog[data-size='lg'] {
+  width: min(960px, calc(100vw - 32px));
+}
+
+.confirm-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.confirm-dialog h2 {
+  flex: none;
+  padding: 20px 24px 0;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  line-height: var(--lh-snug);
+}
+
+.confirm-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px 24px;
+  overflow: auto;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-body code {
+  color: var(--text);
+}
+
+.confirm-dialog-body p + p {
+  margin-top: 7px;
+}
+
+.confirm-dialog-error {
+  flex: none;
+  margin: 0 24px 12px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.confirm-dialog-actions button {
+  min-width: 86px;
+  justify-content: center;
+}
+
+.confirm-dialog-actions .danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--accent-contrast);
+  font-weight: var(--fw-semibold);
+}
+
+.confirm-dialog-actions .danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 82%, var(--text));
+}

@@ -1,0 +1,215 @@
+/* ==========================================================================
+   Prompts — split editor plus a compact target rail
+   ========================================================================== */
+
+.prompts-page > .notice,
+.prompts-page > .warning,
+.prompts-page > .error {
+  margin-bottom: var(--space-3);
+}
+
+.prompts-page .cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+}
+
+/* The editor keeps its card, but the split layout owns its column now. */
+.prompts-page .cards > .editor-card {
+  grid-column: auto;
+}
+
+.prompts-page .editor-card {
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.prompts-page .editor-card > header {
+  align-items: center;
+}
+
+.prompts-page .editor-card .path code {
+  font-size: var(--fs-sm);
+}
+
+.prompt-editor {
+  width: 100%;
+  min-height: 400px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.prompt-editor:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The save bar belongs to the card bottom: it stays in flow but pins while the
+   card is on screen, so a long draft never hides its own save action. */
+.prompts-page .editor-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.prompts-page .editor-actions .meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- target rail ---------- */
+
+.prompt-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.prompt-targets-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 2px var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.prompt-targets-head h2 {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.prompt-targets-head .meta {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.prompt-targets > .card {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+}
+
+.prompt-targets > .card > header {
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.prompt-targets > .card h2 {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.prompt-targets > .card .badge {
+  flex: none;
+}
+
+.prompt-targets > .card .path {
+  min-width: 0;
+}
+
+.prompt-targets > .card .path code {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--fs-2xs);
+  line-height: var(--lh-snug);
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.prompt-targets > .card .meta {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+
+.prompt-targets > .card .confirm-actions {
+  flex-wrap: nowrap;
+  margin-top: 2px;
+}
+
+.prompt-targets > .card .confirm-actions button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+}
+
+@media (min-width: 1180px) {
+  .prompts-page .cards {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+@media (max-width: 1179px) {
+  .prompts-page .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .prompt-targets {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    align-items: stretch;
+  }
+
+  .prompt-targets-head {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .prompts-page .editor-card {
+    padding: var(--space-3);
+  }
+
+  .prompts-page .editor-actions {
+    position: static;
+    align-items: flex-start;
+  }
+
+  .prompt-targets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.keys {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.keys li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  border-top: 1px dashed var(--border);
+}
+
+.keys li code {
+  min-width: 120px;
+  color: var(--text);
+}
