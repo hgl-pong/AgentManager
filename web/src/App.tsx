@@ -48,8 +48,8 @@ const TABS = [
   {
     key: 'store',
     label: '商店',
-    title: '技能商店',
-    lede: '从 skillstore.io 搜索技能，装进源目录，再链接给 Claude Code、Codex 与 pi。Skills come from skillstore.io; the page can show Chinese, English, or both.',
+    title: '商店',
+    lede: '从 skillstore.io 搜索技能、从官方 MCP Registry 搜索 MCP server，装进各自的源目录，再链接或同步给 Claude Code、Codex 与 pi。Skills come from skillstore.io; MCP servers come from the official MCP Registry.',
   },
   {
     key: 'mcp',

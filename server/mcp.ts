@@ -309,6 +309,11 @@ function writableSource(path: string): SourceState {
   return source;
 }
 
+/** Keys already in the MCP source, so the store can mark entries it holds and refuse overwrites. */
+export function listMcpSourceNames(sourcePath: string): string[] {
+  return Object.keys(readSource(sourcePath).servers).sort((a, b) => a.localeCompare(b));
+}
+
 /** Snapshots then atomically replaces the source file. Returns the snapshot id. */
 function writeSource(input: McpInput, source: SourceState, servers: JsonObject): string {
   const root: JsonObject = { ...source.root, version: source.root.version ?? 1, servers };

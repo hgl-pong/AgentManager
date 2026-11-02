@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, errorMessage, isAbortError } from '../api.ts';
 import { useConfirmDialog } from '../lib/confirm.tsx';
+import { StoreMcpInstallDialog } from '../components/StoreMcpInstallDialog.tsx';
+import { StoreDetailDialog } from '../components/StoreDetailDialog.tsx';
+import type { StoreDetailTarget } from '../components/StoreDetailDialog.tsx';
 import {
   STORE_LANGS,
   STORE_TEXT,
@@ -12,7 +15,13 @@ import {
   riskLabel,
 } from '../lib/store-i18n.ts';
 import type { StoreLang } from '../lib/store-i18n.ts';
-import type { StoreReport, StoreSkill } from '../../../shared/types.ts';
+import type {
+  StoreKind,
+  StoreMcpInstallResponse,
+  StoreMcpServer,
+  StoreReport,
+  StoreSkill,
+} from '../../../shared/types.ts';
 
 const PAGE_SIZE = 24;
 
@@ -56,14 +65,20 @@ export function StoreView({
   onChanged: () => void;
 }) {
   const [lang, setLang] = useState<StoreLang>(() => loadStoreLang());
+  const [kind, setKind] = useState<StoreKind>('skill');
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [page, setPage] = useState(1);
+  // The MCP registry pages by cursor, so the page keeps a stack of the cursors it has visited.
+  const [cursor, setCursor] = useState('');
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [report, setReport] = useState<StoreReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [installing, setInstalling] = useState<StoreMcpServer | null>(null);
+  const [detail, setDetail] = useState<StoreDetailTarget | null>(null);
   // null means "follow whatever is detected": a new agent is then linked without extra clicks.
   const [targets, setTargets] = useState<string[] | null>(null);
   const seqRef = useRef(0);
@@ -87,8 +102,9 @@ export function StoreView({
 
   const load = useCallback(
     async (
+      nextKind: StoreKind,
       nextQuery: string,
-      nextPage: number,
+      position: { page: number; cursor: string },
       options: { refresh?: boolean } = {},
       signal?: AbortSignal,
     ) => {
@@ -96,7 +112,8 @@ export function StoreView({
       setLoading(true);
       try {
         const next = await api.store(nextQuery, {
-          page: nextPage,
+          kind: nextKind,
+          ...(nextKind === 'skill' ? { page: position.page } : { cursor: position.cursor }),
           limit: PAGE_SIZE,
           refresh: options.refresh,
           signal,
@@ -116,9 +133,9 @@ export function StoreView({
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(submitted, page, {}, controller.signal);
+    void load(kind, submitted, { page, cursor }, {}, controller.signal);
     return () => controller.abort();
-  }, [load, submitted, page, version]);
+  }, [load, kind, submitted, page, cursor, version]);
 
   // Changing page should start the reader at the top of the grid, not at the pager.
   const mounted = useRef(false);
@@ -128,31 +145,65 @@ export function StoreView({
       return;
     }
     topRef.current?.scrollIntoView({ block: 'start' });
-  }, [page]);
+  }, [page, cursor]);
 
   function chooseLang(next: StoreLang) {
     setLang(next);
     rememberStoreLang(next);
   }
 
+  function chooseKind(next: StoreKind) {
+    if (next === kind) return;
+    setKind(next);
+    setQuery('');
+    setSubmitted('');
+    setPage(1);
+    setCursor('');
+    setCursorStack([]);
+    setReport(null);
+    setLoadError(null);
+  }
+
   function search(event: FormEvent) {
     event.preventDefault();
     const next = query.trim();
+    // The registry ignores `search` below three characters; the hint under the header says so.
+    if (kind === 'mcp' && next !== '' && next.length < 3) return;
+    const resets = page !== 1 || cursor !== '' || cursorStack.length > 0;
+    setPage(1);
+    setCursor('');
+    setCursorStack([]);
     // Asking for the same words again means "fetch it again", not "do nothing".
     if (next === submitted) {
-      if (page !== 1) setPage(1);
-      else void load(next, 1, { refresh: true });
+      if (resets) return;
+      void load(kind, next, { page: 1, cursor: '' }, { refresh: true });
       return;
     }
     setSubmitted(next);
-    setPage(1);
   }
 
   function showFeatured() {
     setQuery('');
     setSubmitted('');
     setPage(1);
-    void load('', 1, { refresh: true });
+    setCursor('');
+    setCursorStack([]);
+    void load(kind, '', { page: 1, cursor: '' }, { refresh: true });
+  }
+
+  function nextMcpPage() {
+    if (report?.kind !== 'mcp' || !report.nextCursor) return;
+    setCursorStack((stack) => [...stack, cursor]);
+    setCursor(report.nextCursor);
+    setPage(1);
+  }
+
+  function prevMcpPage() {
+    const stack = [...cursorStack];
+    const previous = stack.pop() ?? '';
+    setCursorStack(stack);
+    setCursor(previous);
+    setPage(1);
   }
 
   function toggleTarget(key: string, checked: boolean) {
@@ -198,14 +249,14 @@ export function StoreView({
         try {
           const result = await api.installStoreSkill({ owner: item.owner, slug: item.slug, agents: linkKeys });
           setReport((current) =>
-            current === null
-              ? current
-              : {
+            current?.kind === 'skill'
+              ? {
                   ...current,
                   items: current.items.map((entry) =>
                     entry.id === item.id ? { ...entry, inSource: true } : entry,
                   ),
-                },
+                }
+              : current,
           );
           const linked = result.links.filter((link) => link.state === 'linked').map((link) => link.label);
           const parts = [
@@ -223,19 +274,72 @@ export function StoreView({
     });
   }
 
+  function installFromDetail(target: StoreDetailTarget) {
+    // The preview has done its job; the install flow gets the whole screen.
+    setDetail(null);
+    if (target.kind === 'skill') requestInstall(target.item);
+    else {
+      setNotice(null);
+      setInstalling(target.item);
+    }
+  }
+
+  function mcpInstalled(item: StoreMcpServer, result: StoreMcpInstallResponse) {
+    setInstalling(null);
+    setReport((current) =>
+      current?.kind === 'mcp'
+        ? {
+            ...current,
+            items: current.items.map((entry) =>
+              entry.id === item.id ? { ...entry, inSource: true } : entry,
+            ),
+          }
+        : current,
+    );
+    const parts = [
+      t('mcpNotice', result.name),
+      ...result.warnings.map((warning) => `${t('warningPrefix')}${warning}`),
+      ...(result.snapshotIds.length > 0 ? [t('noticeSnapshot', result.snapshotIds.join('、'))] : []),
+    ];
+    setNotice(parts.join(' · '));
+    onChanged();
+  }
+
+  const trimmedQuery = query.trim();
+  const tooShort = kind === 'mcp' && trimmedQuery !== '' && trimmedQuery.length < 3;
+  const placeholder = kind === 'mcp' ? t('mcpSearchPlaceholder') : t('searchPlaceholder');
+
   return (
     <section className="store-page" ref={topRef}>
       <div className="store-head">
         <form className="store-search" role="search" onSubmit={search}>
+          <div className="store-kinds" role="group" aria-label="Skills / MCP">
+            <button
+              type="button"
+              aria-pressed={kind === 'skill'}
+              className={kind === 'skill' ? 'is-active' : ''}
+              onClick={() => chooseKind('skill')}
+            >
+              {t('kindSkill')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={kind === 'mcp'}
+              className={kind === 'mcp' ? 'is-active' : ''}
+              onClick={() => chooseKind('mcp')}
+            >
+              {t('kindMcp')}
+            </button>
+          </div>
           <input
             className="control"
             type="search"
             value={query}
-            placeholder={t('searchPlaceholder')}
-            aria-label={t('searchPlaceholder')}
+            placeholder={placeholder}
+            aria-label={placeholder}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button type="submit" className="primary" disabled={loading}>
+          <button type="submit" className="primary" disabled={loading || tooShort}>
             {loading ? t('searching') : t('search')}
           </button>
           <button type="button" onClick={showFeatured} disabled={loading && submitted === ''}>
@@ -274,6 +378,8 @@ export function StoreView({
         </div>
       </div>
 
+      {tooShort && <p className="hint">{t('mcpMinChars')}</p>}
+
       <div className="toolbar">
         <p className="meta">
           {report ? (
@@ -291,8 +397,17 @@ export function StoreView({
           )}
         </p>
         <p className="hint">
-          {t('installNote')}
-          <code>{report?.sourcePath ?? '~/.agents/skills'}</code> · {t('installNoteTail')}
+          {kind === 'mcp' ? (
+            <>
+              {t('mcpInstallNote')}
+              <code>{report?.sourcePath ?? '~/.agents/mcp/servers.json'}</code> · {t('mcpInstallNoteTail')}
+            </>
+          ) : (
+            <>
+              {t('installNote')}
+              <code>{report?.sourcePath ?? '~/.agents/skills'}</code> · {t('installNoteTail')}
+            </>
+          )}
         </p>
       </div>
 
@@ -300,7 +415,10 @@ export function StoreView({
         <p className="warning">
           {report.stale ? t('staleError') : t('registryError')}
           {report.error}
-          <button type="button" onClick={() => void load(submitted, report?.page ?? 1, { refresh: true })}>
+          <button
+            type="button"
+            onClick={() => void load(kind, submitted, { page, cursor }, { refresh: true })}
+          >
             {t('retry')}
           </button>
         </p>
@@ -309,92 +427,215 @@ export function StoreView({
         <div className="error">
           {t('loadError')}
           {loadError}
-          <button type="button" onClick={() => void load(submitted, report?.page ?? 1, { refresh: true })}>
+          <button
+            type="button"
+            onClick={() => void load(kind, submitted, { page, cursor }, { refresh: true })}
+          >
             {t('retry')}
           </button>
         </div>
       )}
       {notice && <p className="notice">{notice}</p>}
       {confirmNode}
+      {detail && (
+        <StoreDetailDialog
+          target={detail}
+          lang={lang}
+          onClose={() => setDetail(null)}
+          onInstall={installFromDetail}
+        />
+      )}
+      {installing && (
+        <StoreMcpInstallDialog
+          item={installing}
+          lang={lang}
+          agents={agents}
+          targetKeys={selected}
+          onClose={() => setInstalling(null)}
+          onInstalled={(result) => mcpInstalled(installing, result)}
+        />
+      )}
 
       {!report && !loadError && <p className="muted">{t('loading')}</p>}
 
       {report && report.items.length === 0 && !report.error && (
         <div className="mcpm-empty">
-          <p>
-            {report.listing === 'search' ? t('emptySearch', report.query) : t('emptyRegistry')}
-          </p>
-          <p className="hint">{t('emptyHint')}</p>
+          {report.kind === 'mcp' ? (
+            <>
+              <p>
+                {report.listing === 'search'
+                  ? t('mcpEmptySearch', report.query)
+                  : t('mcpEmptyRegistry')}
+              </p>
+              <p className="hint">{t('mcpEmptyHint')}</p>
+            </>
+          ) : (
+            <>
+              <p>
+                {report.listing === 'search' ? t('emptySearch', report.query) : t('emptyRegistry')}
+              </p>
+              <p className="hint">{t('emptyHint')}</p>
+            </>
+          )}
         </div>
       )}
 
       {report && report.items.length > 0 && (
         <div className="store-grid">
-          {report.items.map((item) => {
-            const updated = formatDate(item.updatedAt);
-            return (
-              <article key={item.id} className={item.inSource ? 'store-card is-installed' : 'store-card'}>
-                <header>
-                  <div className="store-title">
-                    <h3>{item.name}</h3>
-                    <span className="store-owner">
-                      {item.owner === 'unknown' ? item.slug : `${item.owner}/${item.slug}`}
-                    </span>
-                  </div>
-                  {item.version && <span className="tag">v{item.version}</span>}
-                </header>
-
-                <div className="store-badges">
-                  {item.category && (
-                    <span className="tag">{categoryLabel(lang, item.category)}</span>
-                  )}
-                  {item.risk && (
-                    <span className={`tag store-risk store-risk-${item.risk}`}>
-                      {riskLabel(lang, item.risk)}
-                    </span>
-                  )}
-                  {item.quality !== undefined && (
-                    <span className="tag" title={t('quality')}>
-                      {t('quality')} {item.quality}
-                    </span>
-                  )}
-                  {item.hasScripts && <span className="tag">{t('scripts')}</span>}
-                  {item.needsNetwork && <span className="tag">{t('network')}</span>}
-                </div>
-
-                {item.summary !== '' && <p className="store-summary">{item.summary}</p>}
-
-                <footer>
-                  <div className="store-stats">
-                    {item.downloads > 0 && (
-                      <span title={t('downloads')}>↓ {formatCount(item.downloads)}</span>
-                    )}
-                    {item.favorites > 0 && (
-                      <span title={t('favorites')}>★ {formatCount(item.favorites)}</span>
-                    )}
-                    {updated && (
-                      <span>
-                        {t('updated')} {updated}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className={item.inSource ? 'store-action is-installed' : 'store-action'}
-                    disabled={item.inSource || busy !== null}
-                    title={item.inSource ? t('inSourceTitle') : undefined}
-                    onClick={() => requestInstall(item)}
+          {report.kind === 'skill'
+            ? report.items.map((item) => {
+                const updated = formatDate(item.updatedAt);
+                return (
+                  <article
+                    key={item.id}
+                    className={item.inSource ? 'store-card is-installed' : 'store-card'}
+                    role="button"
+                    tabIndex={0}
+                    title={t('detailOpen')}
+                    aria-label={t('detailOpenLabel', item.name)}
+                    onClick={() => setDetail({ kind: 'skill', item })}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setDetail({ kind: 'skill', item });
+                      }
+                    }}
                   >
-                    {item.inSource ? t('inSource') : busy === item.id ? t('installing') : t('install')}
-                  </button>
-                </footer>
-              </article>
-            );
-          })}
+                    <header>
+                      <div className="store-title">
+                        <h3>{item.name}</h3>
+                        <span className="store-owner">
+                          {item.owner === 'unknown' ? item.slug : `${item.owner}/${item.slug}`}
+                        </span>
+                      </div>
+                      {item.version && <span className="tag">v{item.version}</span>}
+                    </header>
+
+                    <div className="store-badges">
+                      {item.category && (
+                        <span className="tag">{categoryLabel(lang, item.category)}</span>
+                      )}
+                      {item.risk && (
+                        <span className={`tag store-risk store-risk-${item.risk}`}>
+                          {riskLabel(lang, item.risk)}
+                        </span>
+                      )}
+                      {item.quality !== undefined && (
+                        <span className="tag" title={t('quality')}>
+                          {t('quality')} {item.quality}
+                        </span>
+                      )}
+                      {item.hasScripts && <span className="tag">{t('scripts')}</span>}
+                      {item.needsNetwork && <span className="tag">{t('network')}</span>}
+                    </div>
+
+                    {item.summary !== '' && <p className="store-summary">{item.summary}</p>}
+
+                    <footer>
+                      <div className="store-stats">
+                        {item.downloads > 0 && (
+                          <span title={t('downloads')}>↓ {formatCount(item.downloads)}</span>
+                        )}
+                        {item.favorites > 0 && (
+                          <span title={t('favorites')}>★ {formatCount(item.favorites)}</span>
+                        )}
+                        {updated && (
+                          <span>
+                            {t('updated')} {updated}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className={item.inSource ? 'store-action is-installed' : 'store-action'}
+                        disabled={item.inSource || busy !== null}
+                        title={item.inSource ? t('inSourceTitle') : undefined}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestInstall(item);
+                        }}
+                      >
+                        {item.inSource ? t('inSource') : busy === item.id ? t('installing') : t('install')}
+                      </button>
+                    </footer>
+                  </article>
+                );
+              })
+            : report.items.map((item) => {
+                const updated = formatDate(item.updatedAt);
+                const transports = [...new Set(item.options.map((option) => option.transport))];
+                const canInstall = item.options.length > 0;
+                return (
+                  <article
+                    key={item.id}
+                    className={item.inSource ? 'store-card is-installed' : 'store-card'}
+                    role="button"
+                    tabIndex={0}
+                    title={t('detailOpen')}
+                    aria-label={t('detailOpenLabel', item.name)}
+                    onClick={() => setDetail({ kind: 'mcp', item })}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setDetail({ kind: 'mcp', item });
+                      }
+                    }}
+                  >
+                    <header>
+                      <div className="store-title">
+                        <h3>{item.name}</h3>
+                        <span className="store-owner">{item.id}</span>
+                      </div>
+                      {item.version && <span className="tag">v{item.version}</span>}
+                    </header>
+
+                    <div className="store-badges">
+                      {transports.map((transport) => (
+                        <span className="tag" key={transport}>
+                          {transport}
+                        </span>
+                      ))}
+                    </div>
+
+                    {item.summary !== '' && <p className="store-summary">{item.summary}</p>}
+
+                    <footer>
+                      <div className="store-stats">
+                        {updated && (
+                          <span>
+                            {t('updated')} {updated}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className={item.inSource ? 'store-action is-installed' : 'store-action'}
+                        disabled={item.inSource || !canInstall}
+                        title={
+                          item.inSource
+                            ? t('mcpInSourceTitle')
+                            : canInstall
+                              ? undefined
+                              : t('mcpNoOptionsTitle')
+                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setNotice(null);
+                          setInstalling(item);
+                        }}
+                      >
+                        {item.inSource ? t('inSource') : canInstall ? t('install') : t('mcpNoOptions')}
+                      </button>
+                    </footer>
+                  </article>
+                );
+              })}
         </div>
       )}
 
-      {report && report.totalPages > 1 && (
+      {report?.kind === 'skill' && report.totalPages > 1 && (
         <nav className="store-pager" aria-label={t('pageOf', report.page, report.totalPages)}>
           <button
             type="button"
@@ -409,6 +650,18 @@ export function StoreView({
             disabled={loading || report.page >= report.totalPages}
             onClick={() => setPage(Math.min(report.totalPages, report.page + 1))}
           >
+            {t('nextPage')}
+          </button>
+        </nav>
+      )}
+
+      {report?.kind === 'mcp' && (report.items.length > 0 || cursorStack.length > 0) && (
+        <nav className="store-pager" aria-label={t('mcpPage', cursorStack.length + 1)}>
+          <button type="button" disabled={loading || cursorStack.length === 0} onClick={prevMcpPage}>
+            {t('prevPage')}
+          </button>
+          <span className="store-pager-label">{t('mcpPage', cursorStack.length + 1)}</span>
+          <button type="button" disabled={loading || !report.nextCursor} onClick={nextMcpPage}>
             {t('nextPage')}
           </button>
         </nav>

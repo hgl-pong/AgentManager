@@ -10,15 +10,22 @@ import { deflateRawSync } from 'node:zlib';
 import {
   clearStoreCache,
   extractZipEntries,
+  getMcpStoreReport,
   getStoreReport,
+  getStoreSkillDetail,
+  installStoreMcp,
   installStoreSkill,
   listInstalledSkills,
+  mcpStoreBaseUrl,
+  normalizeMcpServers,
   normalizeStoreSkills,
   rankStoreSkills,
   readManifest,
   storeBaseUrl,
   stripCommonDirectory,
 } from './store.ts';
+import { createAppConfig } from './app.ts';
+import { listMcpSourceNames } from './mcp.ts';
 import { restoreSnapshot } from './snapshot.ts';
 import { unzip } from './zip.ts';
 import { AppError } from '../shared/types.ts';
@@ -104,9 +111,42 @@ const CATALOG = {
   pagination: { page: 1, limit: 12, total: 42, totalPages: 4 },
 };
 
+/** The shape `/api/skills/<slug>` adds on top of a catalog row. */
+const SKILL_DETAIL = {
+  slug: 'acme-pdf-tools',
+  name: 'pdf-tools',
+  description: 'Read and edit PDFs.',
+  summary: 'Turns PDFs into text and back.',
+  category: 'office',
+  riskLevel: 'medium',
+  riskFactors: ['external_commands'],
+  license: 'MIT',
+  repo: 'https://github.com/acme/pdf-tools',
+  author: 'acme',
+  authorVersion: '2.0.0',
+  updatedAt: '2026-10-25T11:56:50.970449+00:00',
+  aiContent: {
+    user_title: 'Read and edit PDFs',
+    value_statement: 'A careful workflow for PDFs.',
+    actual_capabilities: ['Extract text', 'Fill forms'],
+    limitations: ['No OCR'],
+    use_cases: [{ title: 'Fill a form', description: 'Fill and save a form.' }],
+  },
+  fileStructure: [
+    { path: 'SKILL.md', type: 'file', lines: 42 },
+    { path: 'scripts/', type: 'directory' },
+  ],
+  securityAudit: { summary: 'No shell execution found.' },
+  stats: { viewCount: 7, downloadCount: 1234, favoriteCount: 12 },
+};
+
 interface RegistryBehaviour {
   catalog?: unknown;
   catalogStatus?: number;
+  detail?: unknown;
+  detailStatus?: number;
+  mcpCatalog?: unknown;
+  mcpStatus?: number;
   manifestStatus?: number;
   downloadStatus?: number[];
   manifestBody?: unknown;
@@ -156,6 +196,20 @@ before(async () => {
       }
       response.writeHead(200, { 'content-type': 'application/zip' });
       response.end(behaviour.downloadBody ?? SKILL_ZIP);
+      return;
+    }
+
+    if (url.pathname === '/api/skills/acme-pdf-tools') {
+      response.writeHead(behaviour.detailStatus ?? 200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(behaviour.detail ?? SKILL_DETAIL));
+      return;
+    }
+
+    if (url.pathname === '/v0/servers') {
+      response.writeHead(behaviour.mcpStatus ?? 200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify(behaviour.mcpCatalog ?? { servers: [], metadata: {} }),
+      );
       return;
     }
 
@@ -270,6 +324,38 @@ test('getStoreReport lists the catalog when the query is empty and searches othe
   assert.equal(second.page, 3);
   assert.equal(second.limit, 24);
   assert.match(requests.at(-1) ?? '', /^\/api\/skills\?limit=24&page=3$/);
+});
+
+test('getStoreSkillDetail maps the full skill record for the preview', async () => {
+  behaviour = { detail: SKILL_DETAIL };
+  const detail = await getStoreSkillDetail({
+    slug: 'acme-pdf-tools',
+    baseUrl,
+    sourceSkills: ['pdf-tools'],
+  });
+
+  assert.equal(detail.name, 'pdf-tools', 'the record name beats the slug');
+  assert.equal(detail.aiTitle, 'Read and edit PDFs');
+  assert.equal(detail.aiSummary, 'Turns PDFs into text and back.');
+  assert.equal(detail.valueStatement, 'A careful workflow for PDFs.');
+  assert.deepEqual(detail.capabilities, ['Extract text', 'Fill forms']);
+  assert.deepEqual(detail.limitations, ['No OCR']);
+  assert.deepEqual(detail.useCases, [{ title: 'Fill a form', description: 'Fill and save a form.' }]);
+  assert.deepEqual(detail.files, [
+    { path: 'SKILL.md', type: 'file', lines: 42 },
+    { path: 'scripts/', type: 'directory' },
+  ]);
+  assert.equal(detail.securitySummary, 'No shell execution found.');
+  assert.deepEqual(detail.riskFactors, ['external_commands']);
+  assert.equal(detail.viewCount, 7);
+  assert.equal(detail.inSource, true);
+  assert.ok(requests.includes('/api/skills/acme-pdf-tools'));
+
+  await assert.rejects(
+    () => getStoreSkillDetail({ slug: '../escape', baseUrl }),
+    /slug/,
+  );
+  behaviour = {};
 });
 
 test('getStoreReport marks cache hits and falls back to the last answer when the registry fails', async () => {
@@ -568,3 +654,216 @@ function readdirLength(path: string): number {
     return 0;
   }
 }
+
+// ---- MCP catalog ----
+
+const MCP_CATALOG = {
+  servers: [
+    {
+      server: {
+        name: 'io.github.acme/files',
+        title: 'Files',
+        description: 'Read and write files.',
+        version: '1.2.0',
+        repository: { url: 'https://github.com/acme/files' },
+        packages: [
+          {
+            registryType: 'npm',
+            identifier: '@acme/files-mcp',
+            version: '1.2.0',
+            transport: { type: 'stdio' },
+            runtimeArguments: [{ type: 'named', name: '--root', value: '/tmp' }],
+            packageArguments: [{ type: 'positional', default: 'serve' }],
+            environmentVariables: [
+              { name: 'ACME_TOKEN', isRequired: true, isSecret: true, description: 'API token' },
+              { name: 'ACME_REGION', default: 'eu', description: 'Region' },
+              { name: 'ACME_OPTIONAL', description: 'only when needed' },
+            ],
+          },
+          {
+            registryType: 'mcpb',
+            identifier: 'https://example.com/files.mcpb',
+            transport: { type: 'stdio' },
+          },
+        ],
+        remotes: [
+          {
+            type: 'streamable-http',
+            url: 'https://{region}.acme.dev/mcp',
+            variables: { region: { default: 'eu' } },
+            headers: [{ name: 'Authorization', isRequired: true, isSecret: true }],
+          },
+          {
+            type: 'streamable-http',
+            url: 'https://api.acme.dev/mcp',
+            headers: [
+              {
+                name: 'Authorization',
+                value: 'Bearer {gateway_token}',
+                isRequired: true,
+                isSecret: true,
+                description: 'Gateway token',
+              },
+              { name: 'X-Optional', value: 'Bearer {optional_token}' },
+              {
+                name: 'X-Region',
+                value: 'Bearer {region_token}',
+                variables: { region_token: { default: 'eu' } },
+              },
+            ],
+          },
+          {
+            type: 'streamable-http',
+            url: 'https://{tenant}.acme.dev/mcp',
+            variables: { tenant: { isRequired: true, description: 'Tenant slug' } },
+          },
+        ],
+      },
+      _meta: { status: 'active', updatedAt: '2026-10-01T00:00:00Z' },
+    },
+    { server: { name: 'io.github.acme/old' }, _meta: { status: 'deleted' } },
+    {},
+  ],
+  metadata: { nextCursor: 'io.github.acme/files:1.2.0' },
+};
+
+test('normalizeMcpServers maps packages and remotes into install options', () => {
+  const items = normalizeMcpServers(MCP_CATALOG);
+  assert.equal(items.length, 1, 'deleted and nameless rows are dropped');
+  const server = items[0]!;
+  assert.equal(server.id, 'io.github.acme/files');
+  assert.equal(server.name, 'Files');
+  assert.equal(server.owner, 'io.github.acme');
+  assert.equal(server.installName, 'files');
+  assert.equal(server.updatedAt, '2026-10-01T00:00:00.000Z');
+  assert.equal(server.options.length, 4, 'mcpb has no supported runner');
+
+  const pkg = server.options.find((option) => option.transport === 'stdio')!;
+  assert.equal(pkg.server.command, 'npx');
+  assert.deepEqual(pkg.server.args, ['-y', '@acme/files-mcp@1.2.0', '--root', '/tmp', 'serve']);
+  assert.deepEqual(pkg.server.env, { ACME_REGION: 'eu' }, 'optional inputs without a default are omitted');
+  assert.deepEqual(
+    pkg.variables.map((variable) => `${variable.target}:${variable.name}`),
+    ['env:ACME_TOKEN'],
+  );
+
+  const remotes = server.options.filter((option) => option.transport === 'http');
+  assert.equal(remotes.length, 3);
+  const filled = remotes.find((option) => option.server.url === 'https://eu.acme.dev/mcp')!;
+  assert.ok(filled, 'a URL variable with a default is filled in');
+  assert.deepEqual(
+    filled.variables.map((variable) => `${variable.target}:${variable.name}`),
+    ['header:Authorization'],
+  );
+  const templated = remotes.find((option) => option.server.url === 'https://api.acme.dev/mcp')!;
+  assert.ok(templated, 'a header value keeps its placeholder for the dialog');
+  assert.deepEqual(templated.server.headers, {
+    Authorization: 'Bearer {gateway_token}',
+    'X-Region': 'Bearer eu',
+  });
+  assert.deepEqual(
+    templated.variables.map((variable) => `${variable.target}:${variable.name}`),
+    ['template:gateway_token'],
+    'an optional templated header is omitted; a declared default is filled in',
+  );
+  assert.equal(templated.variables[0]?.isSecret, true, 'secrecy follows the header');
+  const pending = remotes.find((option) => option.server.url?.includes('{tenant}'))!;
+  assert.ok(pending, 'a required URL variable stays for the dialog');
+  assert.deepEqual(
+    pending.variables.map((variable) => `${variable.target}:${variable.name}`),
+    ['url:tenant'],
+  );
+});
+
+test('getMcpStoreReport searches by cursor and marks servers already in the source', async () => {
+  behaviour.mcpCatalog = MCP_CATALOG;
+  const report = await getMcpStoreReport({
+    baseUrl,
+    query: 'files',
+    cursor: 'next',
+    sourceNames: ['files'],
+    sourcePath: '/mcp/servers.json',
+  });
+
+  assert.equal(report.kind, 'mcp');
+  assert.equal(report.provider, 'MCP Registry');
+  assert.equal(report.listing, 'search');
+  assert.equal(report.items.length, 1);
+  assert.equal(report.items[0]?.inSource, true);
+  assert.equal(report.nextCursor, 'io.github.acme/files:1.2.0');
+  assert.equal(report.sourcePath, '/mcp/servers.json');
+
+  const request = requests.find((entry) => entry.startsWith('/v0/servers?'));
+  assert.ok(request, 'the registry route was called');
+  assert.match(request, /search=files/);
+  assert.match(request, /cursor=next/);
+  assert.match(request, /version=latest/);
+});
+
+test('getMcpStoreReport refuses short searches and keeps the last page through an outage', async () => {
+  behaviour.mcpCatalog = MCP_CATALOG;
+  const first = await getMcpStoreReport({ baseUrl, query: 'files' });
+  assert.equal(first.items.length, 1);
+
+  behaviour.mcpStatus = 500;
+  const stale = await getMcpStoreReport({ baseUrl, query: 'files', refresh: true });
+  assert.equal(stale.stale, true);
+  assert.equal(stale.items.length, 1, 'the cached page is still shown');
+
+  const short = await getMcpStoreReport({ baseUrl, query: 'fi' });
+  assert.equal(short.items.length, 0);
+  assert.match(short.error ?? '', /至少需要 3 个字符/);
+});
+
+test('mcpStoreBaseUrl accepts http(s) only and trims trailing slashes', () => {
+  assert.equal(mcpStoreBaseUrl('https://mirror.example/mcp/'), 'https://mirror.example/mcp');
+  assert.throws(() => mcpStoreBaseUrl('ftp://mirror'), /http\(s\)/);
+});
+
+test('installStoreMcp saves into the MCP source and syncs the selected agents', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agent-manager-mcp-store-'));
+  try {
+    const home = join(root, 'home');
+    mkdirSync(home, { recursive: true });
+    const config = createAppConfig({ projectRoot: root, home, dataDir: join(root, 'data') });
+    const input = {
+      sourcePath: config.mcpSource,
+      snapshotRoot: join(root, 'snapshots'),
+      settingsFiles: config.settingsFiles,
+    };
+    const request = {
+      name: 'files',
+      agents: ['claude'],
+      server: {
+        transport: 'stdio' as const,
+        command: 'npx',
+        args: ['-y', 'files-mcp'],
+        env: { TOKEN: 'secret' },
+      },
+    };
+
+    const result = installStoreMcp({ ...input, request });
+    assert.equal(result.name, 'files');
+    assert.ok(result.snapshotIds.length >= 1);
+    assert.match(result.message, /已保存 files/);
+    assert.deepEqual(listMcpSourceNames(config.mcpSource), ['files']);
+
+    const source = JSON.parse(readFileSync(config.mcpSource, 'utf8'));
+    assert.equal(source.servers.files.command, 'npx');
+    assert.equal(source.servers.files.env.TOKEN, 'secret');
+
+    const claude = JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8'));
+    assert.equal(claude.mcpServers.files.command, 'npx');
+
+    assert.throws(
+      () =>
+        installStoreMcp({
+          ...input,
+          request: { name: 'files', server: { transport: 'stdio', command: 'npx' } },
+        }),
+      (error: unknown) => error instanceof AppError && error.status === 409,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

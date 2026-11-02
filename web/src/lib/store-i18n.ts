@@ -114,6 +114,78 @@ export const STORE_TEXT = {
   noticeLinked: { zh: '并链接到 %s', en: 'linked %s' },
   noticeSnapshot: { zh: '快照 %s', en: 'snapshot %s' },
   warningPrefix: { zh: '注意：', en: 'Note: ' },
+
+  // MCP catalog (official MCP Registry)
+  kindSkill: { zh: 'Skills', en: 'Skills' },
+  kindMcp: { zh: 'MCP', en: 'MCP' },
+  mcpSearchPlaceholder: {
+    zh: '搜索 MCP server（至少 3 个字符）…',
+    en: 'Search MCP servers (3+ characters)…',
+  },
+  mcpMinChars: {
+    zh: 'MCP Registry 的搜索至少需要 3 个字符。',
+    en: 'The MCP Registry needs at least 3 characters to search.',
+  },
+  mcpInstallNote: { zh: '安装位置是 MCP 源：', en: 'Installs into the MCP source: ' },
+  mcpInstallNoteTail: {
+    zh: '保存后同步给上面勾选的 agent。',
+    en: 'saved, then synced to the agents checked above.',
+  },
+  mcpEmptySearch: { zh: '没有找到「%s」相关的 MCP server。', en: 'No MCP server matches “%s”.' },
+  mcpEmptyRegistry: { zh: 'MCP Registry 没有返回任何 server。', en: 'The MCP Registry returned no server.' },
+  mcpEmptyHint: {
+    zh: 'MCP Registry 只按名称搜索，换几个关键词试试。',
+    en: 'The MCP Registry searches names only; try other keywords.',
+  },
+  mcpPage: { zh: '第 %s 页', en: 'page %s' },
+  mcpInSourceTitle: {
+    zh: 'MCP 源里已经有同名 server，先到 MCP 页移除或改名',
+    en: 'The MCP source already has this server; remove or rename it on the MCP page first',
+  },
+  mcpNoOptions: { zh: '没有安装方式', en: 'No option' },
+  mcpNoOptionsTitle: {
+    zh: '这个 server 没有目前支持的包或远端地址',
+    en: 'This server has no package or remote endpoint the app can install',
+  },
+  mcpOption: { zh: '安装方式', en: 'Run as' },
+  mcpName: { zh: '名称（写入 MCP 源）', en: 'Name (in the MCP source)' },
+  mcpVariables: { zh: '需要填写', en: 'Required values' },
+  mcpVariableRequired: { zh: '必填', en: 'required' },
+  mcpNoVariables: { zh: '不需要额外配置。', en: 'No extra configuration needed.' },
+  mcpUrlVariable: { zh: '会替换 URL 里的 {%s}', en: 'replaces {%s} in the URL' },
+  mcpTemplateVariable: { zh: '会替换定义里的 {%s}', en: 'replaces {%s} in the definition' },
+  mcpPreview: { zh: '写入内容', en: 'Will write' },
+  mcpTargets: { zh: '保存后同步到：%s', en: 'Synced to: %s' },
+  mcpOnlySource: { zh: '只写入 MCP 源，不同步任何 agent。', en: 'Writes the MCP source only; no agent is synced.' },
+  mcpSseWarning: {
+    zh: 'Codex 与 pi 不支持 sse，同步时会被跳过。',
+    en: 'Codex and pi do not support sse; they are skipped when syncing.',
+  },
+  mcpDialogHint: {
+    zh: 'server 定义来自官方 MCP Registry。写入前会自动建快照，可在快照面板里整体撤销。',
+    en: 'The definition comes from the official MCP Registry. A snapshot is taken first and can be restored later.',
+  },
+  mcpNotice: { zh: '已安装 %s 到 MCP 源', en: 'Installed %s into the MCP source' },
+  detailOpen: { zh: '查看详情', en: 'Details' },
+  detailOpenLabel: { zh: '查看 %s 的完整介绍', en: 'View full details for %s' },
+  detailClose: { zh: '关闭', en: 'Close' },
+  detailLoading: { zh: '正在读取完整介绍…', en: 'Loading the full description…' },
+  detailError: { zh: '读取技能详情失败：', en: 'Could not load skill details: ' },
+  detailCapabilities: { zh: '能做什么', en: 'What it does' },
+  detailLimitations: { zh: '限制', en: 'Limitations' },
+  detailUseCases: { zh: '使用场景', en: 'Use cases' },
+  detailFiles: { zh: '文件结构', en: 'Files' },
+  detailSecurity: { zh: '安全审查', en: 'Security review' },
+  detailRiskFactors: { zh: '风险因素', en: 'Risk factors' },
+  detailOptions: { zh: '可选安装方式', en: 'Install options' },
+  detailNoOptions: {
+    zh: '没有可安装的包或远端地址。',
+    en: 'No installable package or remote endpoint.',
+  },
+  detailRepository: { zh: '代码仓库', en: 'Repository' },
+  detailWebsite: { zh: '官网', en: 'Website' },
+  detailViews: { zh: '浏览', en: 'views' },
+  cancel: { zh: '取消', en: 'Cancel' },
 } satisfies Record<string, Bi>;
 
 export type StoreTextKey = keyof typeof STORE_TEXT;

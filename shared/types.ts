@@ -579,6 +579,9 @@ export interface CacheReport {
 
 // ---- skill store ----
 
+/** Which catalog a store response describes. */
+export type StoreKind = 'skill' | 'mcp';
+
 /** A skill the registry offers. `id` is the registry slug and stays stable across pages. */
 export interface StoreSkill {
   id: string;
@@ -607,7 +610,39 @@ export interface StoreSkill {
 /** `featured` is the registry's own ordering; `search` is an answer to a query. */
 export type StoreListing = 'featured' | 'search';
 
-export interface StoreReport {
+/** One way the registry's AI review says a skill can be used. */
+export interface StoreSkillUseCase {
+  title: string;
+  description: string;
+}
+
+/** One entry of the skill's file tree, as the registry reports it. */
+export interface StoreSkillFile {
+  path: string;
+  type: string;
+  lines?: number;
+}
+
+/**
+ * The extra detail `/api/skills/<slug>` carries. The catalog row is enough for a card, but a
+ * preview needs the full description, the AI review and the file list.
+ */
+export interface StoreSkillDetail extends StoreSkill {
+  aiTitle?: string;
+  aiSummary?: string;
+  valueStatement?: string;
+  capabilities: string[];
+  limitations: string[];
+  useCases: StoreSkillUseCase[];
+  files: StoreSkillFile[];
+  /** Plain-language result of the registry's static analysis. */
+  securitySummary?: string;
+  /** Raw risk-factor keys such as `external_commands`. */
+  riskFactors: string[];
+  viewCount: number;
+}
+
+export interface StoreReportBase {
   provider: string;
   /** The registry base URL that answered. */
   endpoint: string;
@@ -617,7 +652,7 @@ export interface StoreReport {
   page: number;
   limit: number;
   totalPages: number;
-  /** How many skills the registry says match, which can be more than `items`. */
+  /** How many entries the registry says match, which can be more than `items`. */
   total: number;
   fetchedAt: string;
   cached: boolean;
@@ -625,8 +660,61 @@ export interface StoreReport {
   stale?: boolean;
   error?: string;
   sourcePath: string;
+}
+
+export interface StoreSkillReport extends StoreReportBase {
+  kind: 'skill';
   items: StoreSkill[];
 }
+
+/** A value the registry needs before a server can be saved; the install dialog collects it. */
+export interface StoreMcpVariable {
+  /** Where the entered value goes when the dialog completes the definition. */
+  target: 'env' | 'header' | 'url' | 'template';
+  /** Env/header key, the `{name}` token inside a remote URL, or a `{name}` token inside any value. */
+  name: string;
+  description?: string;
+  isSecret?: boolean;
+}
+
+/** One way the registry says a server can be run. */
+export interface StoreMcpOption {
+  id: string;
+  /** Short technical description, e.g. `npm @scope/server@1.2.0` or `http api.example.com`. */
+  label: string;
+  transport: McpTransport;
+  /** The definition to save; required values are left out and listed in `variables`. */
+  server: McpServerDefinition;
+  variables: StoreMcpVariable[];
+}
+
+/** An MCP server the official registry offers. `id` is its reverse-DNS name. */
+export interface StoreMcpServer {
+  id: string;
+  /** Display name: the registry title, or the tail of the reverse-DNS name. */
+  name: string;
+  /** The namespace part of the reverse-DNS name. */
+  owner: string;
+  /** Suggested key inside servers.json, derived from the name. */
+  installName: string;
+  summary: string;
+  version?: string;
+  repository?: string;
+  websiteUrl?: string;
+  updatedAt?: string;
+  options: StoreMcpOption[];
+  /** True when the MCP source already holds a server with `installName`. */
+  inSource: boolean;
+}
+
+export interface StoreMcpReport extends StoreReportBase {
+  kind: 'mcp';
+  /** The registry pages by cursor and reports no total; `total` stays 0. */
+  nextCursor?: string;
+  items: StoreMcpServer[];
+}
+
+export type StoreReport = StoreSkillReport | StoreMcpReport;
 
 export interface StoreInstallRequest {
   owner: string;
@@ -657,6 +745,22 @@ export interface StoreInstallReport {
 
 export interface StoreInstallResponse extends StoreInstallReport {
   matrix: MatrixResponse;
+}
+
+/** The dialog builds the complete definition from one registry option plus the values it asked for. */
+export interface StoreMcpInstallRequest {
+  name: string;
+  server: McpServerDefinition;
+  /** Agents to sync after saving; omitted means "write the source only". */
+  agents?: string[];
+}
+
+export interface StoreMcpInstallResponse {
+  message: string;
+  name: string;
+  snapshotIds: string[];
+  warnings: string[];
+  report: McpMatrixReport;
 }
 
 export type CacheActionKind = 'clean' | 'restore' | 'purge';

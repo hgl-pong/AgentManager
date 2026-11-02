@@ -227,6 +227,36 @@ const storeStub = createServer((request, response) => {
     );
     return;
   }
+  if (url.pathname === '/api/skills/acme-latte') {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        slug: 'acme-latte',
+        name: 'latte',
+        description: 'Brew a latte order.',
+        summary: 'A calmer way to order coffee.',
+        category: 'office',
+        riskLevel: 'safe',
+        license: 'MIT',
+        repo: 'https://github.com/acme/latte',
+        author: 'acme',
+        authorVersion: '0.1.0',
+        updatedAt: '2026-10-25T11:56:50.970Z',
+        riskFactors: ['external_commands'],
+        aiContent: {
+          user_title: 'Order a latte',
+          value_statement: 'Order coffee without leaving the terminal.',
+          actual_capabilities: ['Brew a latte'],
+          limitations: ['No tea'],
+          use_cases: [{ title: 'Morning coffee', description: 'Brew one.' }],
+        },
+        fileStructure: [{ path: 'SKILL.md', type: 'file', lines: 9 }],
+        securityAudit: { summary: 'No shell execution found.' },
+        stats: { viewCount: 3, downloadCount: 5, favoriteCount: 1 },
+      }),
+    );
+    return;
+  }
   const skill = {
     slug: 'acme-latte',
     displayName: 'latte',
@@ -1332,6 +1362,35 @@ try {
   await page.eval(`document.querySelectorAll('.store-pager button')[0].click(); return true;`);
   await page.waitForFn(`document.querySelector('.store-pager-label')?.textContent.includes('第 1 / 3 页')`);
   check('the previous page goes back', true);
+
+  await page.eval(`document.querySelector('.store-card').click(); return true;`);
+  await page.waitForFn(`document.querySelector('dialog.store-detail-dialog')?.open === true`);
+  await page.waitForFn(`document.querySelector('dialog.store-detail-dialog')?.innerText.includes('Order a latte')`);
+  const preview = await page.eval(`
+    const node = document.querySelector('dialog.store-detail-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.querySelector('.store-detail-body')?.innerText ?? '',
+      sections: [...node.querySelectorAll('.store-detail-section h4')].map((heading) => heading.textContent),
+      actions: [...node.querySelectorAll('.confirm-dialog-actions button')].map((button) => button.textContent),
+    };
+  `);
+  check(
+    'clicking a card previews the full skill record before installing',
+    preview.title === 'latte' &&
+      preview.body.includes('Brew a latte order.') &&
+      preview.body.includes('Order a latte') &&
+      preview.sections.some((heading) => heading.includes('能做什么')) &&
+      preview.sections.some((heading) => heading.includes('限制')) &&
+      preview.actions.some((label) => label.includes('安装')),
+    JSON.stringify(preview),
+  );
+
+  await page.eval(
+    `document.querySelector('dialog.store-detail-dialog .confirm-dialog-actions button').click(); return true;`,
+  );
+  await page.waitForFn(`document.querySelector('dialog.store-detail-dialog') === null`);
+  check('the skill preview closes without installing', true);
 
   await page.eval(`document.querySelector('.store-action').click(); return true;`);
   await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);

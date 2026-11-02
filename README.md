@@ -13,18 +13,21 @@
 - **缓存清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等）各占多少、多老，可按 1/7/30/90 天或整体清理；清理只是移到回收站（同一卷上是 `rename`，不复制内容），可原样恢复，只有「清空回收站」才真正释放磁盘。
 - **写前自动快照** — 每次改文件前先备份，页面上可回滚到任意一次操作；还原本身也会先建安全快照，误还原可再撤销。
 
-- **技能商店** — 内置 skillstore.io 目录：搜索或浏览后一键把 skill 装进 `~/.agents/skills` 这一份源，再按 agent 建链；页面文案支持中文 / English / 双语，安装前校验 manifest 的 sha256，包里没有 `SKILL.md`、校验不符或同名已存在都不动磁盘。
+- **商店** — 一个页面两个目录：skill 来自 [skillstore.io](https://skillstore.io)，MCP server 来自官方 [MCP Registry](https://registry.modelcontextprotocol.io)。搜索或浏览后一键把 skill 装进 `~/.agents/skills` 并建链，或把 MCP server 写进 `~/.agents/mcp/servers.json` 并同步到勾选的 agent。页面文案支持中文 / English / 双语；skill 安装前校验 manifest 的 sha256，包里没有 `SKILL.md`、校验不符或同名已存在都不动磁盘；MCP 安装前在弹窗里填写注册表要求的 API key 等必填项。
 
 ### 商店页怎么用
 
-- 源是 [skillstore.io](https://skillstore.io)：搜索框留空时列出它的目录（每行带分类、风险级别、许可证与质量分），输入关键词回车即搜；同名技能会排在前面。
-- 一页 24 个，底部「上一页 / 下一页」带「第 N / M 页」（M 是注册表给出的总页数，热门目录 280 页左右）；换页会自动滚回列表顶部，换关键词或点「热门」会回到第 1 页。
-- 页右上「中文 / English / 双语」切换整个商店页的文案（默认双语，选择记在本地）；技能自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
-- 「安装后链接到」勾选要建链的 agent（默认跟随已检测到的 agent）；卡片上的「安装」先弹确认框，写明要下的 `owner/slug`、落地的绝对路径、会建哪些链接，以及发布者 / 风险 / 质量。带脚本的 skill 会在确认框里单独提醒。
-- 安装分两步：先读 `…/manifest` 拿到下载地址和 sha256，再下 ZIP 到 `data/tmp/` 校验（校验值、ZIP 头、必须有 `SKILL.md`、路径不许越界），最后整体 `move` 进源目录；任何一步失败都不会在源里留下半个 skill。
-- 目录名用 manifest 里的 skill 名（不是 slug）；提示里的快照 id 可在快照面板整体撤销。
-- 「源里已有」表示源目录里已经有同名目录；先到 Skills 页移除或改名再装。
-- 注册表默认 `https://skillstore.io`，可用 `AGENT_MANAGER_STORE_URL` 指向同接口的镜像；注册表挂了会显示上次的缓存并标注抓取时间。
+- 搜索框左边切 `Skills` / `MCP`。Skills 的源是 [skillstore.io](https://skillstore.io)：搜索框留空时列出它的目录（每行带分类、风险级别、许可证与质量分），输入关键词回车即搜；同名技能会排在前面。
+- 点卡片本身（不是「安装」）先打开预览：skill 会即时读取完整记录——完整描述、能力 / 限制 / 使用场景、文件结构、安全审查摘要、风险因素、仓库与下载收藏数；MCP server 列出全部安装方式、每个方式要填的变量以及仓库 / 官网。预览底部也能直接安装，键盘 `Enter` / 空格同样能打开。
+- Skills 一页 24 个，底部「上一页 / 下一页」带「第 N / M 页」（M 是注册表给出的总页数，热门目录 280 页左右）；换页会自动滚回列表顶部，换关键词或点「热门」会回到第 1 页。
+- MCP 的源是官方 Registry：它只按名称搜索且至少 3 个字符，没有总数、按游标翻页，所以底部只显示「第 N 页」。卡片上是 server 的反向域名名、标题、描述与可用的传输方式。
+- 页右上「中文 / English / 双语」切换整个商店页的文案（默认双语，选择记在本地）；skill 与 MCP server 自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
+- 「安装后链接到 / 同步到」勾选目标 agent（默认跟随已检测到的 agent）。Skills 卡片上的「安装」先弹确认框，写明要下的 `owner/slug`、落地的绝对路径、会建哪些链接，以及发布者 / 风险 / 质量；带脚本的 skill 会单独提醒。
+- MCP 卡片上的「安装」打开安装弹窗：可选 `npm` / `pypi` / `oci` 包或 `http` / `sse` 远端地址，改名后写入源；注册表标为必填且没有默认值的 env / header / URL 变量在这里填写（密钥用密码框），`Bearer {token}` 这类值里的占位符同样逐个列出、安装时替换，默认值已自动带好。sse 会提示 Codex 与 pi 不支持。
+- Skills 安装分两步：先读 `…/manifest` 拿到下载地址和 sha256，再下 ZIP 到 `data/tmp/` 校验（校验值、ZIP 头、必须有 `SKILL.md`、路径不许越界），最后整体 `move` 进源目录；任何一步失败都不会在源里留下半个 skill。
+- MCP 安装写进源后，逐个 agent 文件各建一份快照再同步；提示里的快照 id 可在快照面板整体撤销。
+- 「源里已有」表示源目录（或 MCP 源）里已经有同名条目；先到 Skills / MCP 页移除或改名再装。
+- 两个注册表默认 `https://skillstore.io` 与 `https://registry.modelcontextprotocol.io`，可分别用 `AGENT_MANAGER_STORE_URL` / `AGENT_MANAGER_MCP_STORE_URL` 指向实现同一接口的镜像；注册表挂了会显示上次的缓存并标注抓取时间。
 - 下载的临时目录默认 `data/tmp/`（`AGENT_MANAGER_STORE_TEMP` 可改），安装成功或失败都会清空。
 
 ### 设置页怎么用
@@ -101,7 +104,7 @@ npm run shots      # 同上构建后，把每个页签的明暗两套截图写�
 ## 目录
 
 ```
-server/     扫描、写操作、提示词、配置、设置读写、技能商店、缓存与回收站、快照、启动器，以及 HTTP 路由
+server/     扫描、写操作、提示词、配置、设置读写、商店（skill 与 MCP）、缓存与回收站、快照、启动器，以及 HTTP 路由
 web/        React 单页（左侧导航 + skills / 商店 / 提示词 / 设置 / 缓存视图）
 shared/     服务端与前端共用的 API 契约
 schemas/    Claude Code / Codex / pi 的官方配置 schema（settings catalog 的来源）
@@ -114,4 +117,4 @@ data/       快照、回收站与运行状态（git 忽略）
 
 ## 边界
 
-只管用户级全局配置，不碰仓库内的项目级配置；缓存页只处理白名单里的会话记录与缓存，配置文件永不进入清理范围；商店只往源目录装文件，不执行 skill 内容、不做升级与发布；只对接 Claude Code、Codex、pi；单机单用户，监听 `127.0.0.1`。
+只管用户级全局配置，不碰仓库内的项目级配置；缓存页只处理白名单里的会话记录与缓存，配置文件永不进入清理范围；商店只往源目录装文件，不执行 skill 内容、不启动 MCP server、不做升级与发布；只对接 Claude Code、Codex、pi；单机单用户，监听 `127.0.0.1`。

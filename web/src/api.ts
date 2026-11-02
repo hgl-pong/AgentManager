@@ -28,7 +28,11 @@ import type {
   SnapshotManifest,
   StoreInstallRequest,
   StoreInstallResponse,
+  StoreKind,
+  StoreMcpInstallRequest,
+  StoreMcpInstallResponse,
   StoreReport,
+  StoreSkillDetail,
 } from '../../shared/types.ts';
 
 export type { HealthResponse, OpenResponse } from '../../shared/types.ts';
@@ -103,17 +107,37 @@ export const api = {
   quit: () => request<{ stopping: boolean }>('/api/app/quit', post({})),
   cache: (signal?: AbortSignal) => request<CacheReport>('/api/cache', { signal }),
   cacheAction: (body: CacheActionRequest) => request<CacheActionResponse>('/api/cache', post(body)),
-  store: (query = '', options: { page?: number; limit?: number; refresh?: boolean; signal?: AbortSignal } = {}) => {
+  store: (
+    query = '',
+    options: {
+      kind?: StoreKind;
+      page?: number;
+      cursor?: string;
+      limit?: number;
+      refresh?: boolean;
+      signal?: AbortSignal;
+    } = {},
+  ) => {
     const params = new URLSearchParams();
     if (query.trim() !== '') params.set('q', query.trim());
+    if (options.kind === 'mcp') params.set('kind', 'mcp');
     if (options.page !== undefined) params.set('page', String(options.page));
+    if (options.cursor) params.set('cursor', options.cursor);
     if (options.limit !== undefined) params.set('limit', String(options.limit));
     if (options.refresh) params.set('refresh', '1');
     const qs = params.toString();
     return request<StoreReport>(`/api/store${qs ? `?${qs}` : ''}`, { signal: options.signal }, STORE_TIMEOUT_MS);
   },
+  storeSkill: (slug: string, signal?: AbortSignal) =>
+    request<StoreSkillDetail>(
+      `/api/store/skill?slug=${encodeURIComponent(slug)}`,
+      { signal },
+      STORE_TIMEOUT_MS,
+    ),
   installStoreSkill: (body: StoreInstallRequest) =>
     request<StoreInstallResponse>('/api/store/install', post(body), STORE_TIMEOUT_MS),
+  installStoreMcp: (body: StoreMcpInstallRequest) =>
+    request<StoreMcpInstallResponse>('/api/store/install-mcp', post(body), STORE_TIMEOUT_MS),
   settingsCatalog: (signal?: AbortSignal) =>
     request<SettingsCatalog>('/api/settings/catalog', { signal }),
   settings: (signal?: AbortSignal) => request<SettingsReport>('/api/settings', { signal }),

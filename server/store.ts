@@ -16,14 +16,26 @@ import { dirname, join, resolve } from 'node:path';
 import { AppError } from '../shared/types.ts';
 import type {
   AgentSpec,
+  McpMatrixReport,
+  McpServerDefinition,
+  McpTransport,
+  SettingsFileDescriptor,
   StoreInstallLink,
   StoreInstallReport,
   StoreInstallRequest,
   StoreListing,
-  StoreReport,
+  StoreMcpInstallRequest,
+  StoreMcpInstallResponse,
+  StoreMcpOption,
+  StoreMcpReport,
+  StoreMcpServer,
+  StoreMcpVariable,
   StoreSkill,
+  StoreSkillDetail,
+  StoreSkillReport,
 } from '../shared/types.ts';
 import { moveDirectory } from './actions.ts';
+import { listMcpSourceNames, normalizeDefinition, runMcpAction, validateServerName } from './mcp.ts';
 import { hasSkillFile, isInside } from './scan.ts';
 import { createSnapshot, markSnapshotFailed } from './snapshot.ts';
 import { unzip } from './zip.ts';
@@ -33,8 +45,15 @@ export type {
   StoreInstallReport,
   StoreInstallRequest,
   StoreListing,
-  StoreReport,
+  StoreMcpInstallRequest,
+  StoreMcpInstallResponse,
+  StoreMcpOption,
+  StoreMcpReport,
+  StoreMcpServer,
+  StoreMcpVariable,
   StoreSkill,
+  StoreSkillDetail,
+  StoreSkillReport,
 } from '../shared/types.ts';
 
 /**
@@ -184,7 +203,12 @@ function registryUrl(base: string, path: string, params: Record<string, string |
 const delay = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
 /** The registry intermittently answers 5xx for a valid request, so a couple of retries are normal. */
-async function fetchWithRetry(url: string, fetchImpl: typeof fetch, accept: string): Promise<Response> {
+async function fetchWithRetry(
+  url: string,
+  fetchImpl: typeof fetch,
+  accept: string,
+  label = '技能商店',
+): Promise<Response> {
   let lastError = '';
   for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt += 1) {
     if (attempt > 0) await delay(400 * attempt);
@@ -201,7 +225,7 @@ async function fetchWithRetry(url: string, fetchImpl: typeof fetch, accept: stri
       lastError = error instanceof Error ? error.message : String(error);
     }
   }
-  throw new AppError(502, `技能商店请求失败（${lastError}）`);
+  throw new AppError(502, `${label}请求失败（${lastError}）`);
 }
 
 function describeBody(body: string): string {
@@ -218,33 +242,36 @@ function describeBody(body: string): string {
   return text.slice(0, 200);
 }
 
-interface StoreCacheEntry {
+interface StoreCacheEntry<T> {
   key: string;
   at: number;
-  items: StoreSkill[];
+  items: T[];
   total: number;
   totalPages: number;
+  nextCursor?: string;
 }
 
-const cache = new Map<string, StoreCacheEntry>();
+const skillCache = new Map<string, StoreCacheEntry<StoreSkill>>();
+const mcpCache = new Map<string, StoreCacheEntry<StoreMcpServer>>();
 
-function cacheGet(key: string): StoreCacheEntry | undefined {
-  const entry = cache.get(key);
+/** Both catalogs share the same freshness window and cache size. */
+function cacheGet<T>(entries: Map<string, StoreCacheEntry<T>>, key: string): StoreCacheEntry<T> | undefined {
+  const entry = entries.get(key);
   if (!entry) return undefined;
   if (Date.now() - entry.at > CACHE_TTL_MS * 10) {
-    cache.delete(key);
+    entries.delete(key);
     return undefined;
   }
   return entry;
 }
 
-function cacheSet(entry: StoreCacheEntry): void {
-  cache.delete(entry.key);
-  cache.set(entry.key, entry);
-  while (cache.size > CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
+function cacheSet<T>(entries: Map<string, StoreCacheEntry<T>>, entry: StoreCacheEntry<T>): void {
+  entries.delete(entry.key);
+  entries.set(entry.key, entry);
+  while (entries.size > CACHE_LIMIT) {
+    const oldest = entries.keys().next().value;
     if (oldest === undefined) break;
-    cache.delete(oldest);
+    entries.delete(oldest);
   }
 }
 
@@ -277,9 +304,10 @@ function storeReport(input: {
   cached: boolean;
   stale?: boolean;
   error?: string;
-}): StoreReport {
+}): StoreSkillReport {
   const present = new Set(input.sourceSkills);
   return {
+    kind: 'skill',
     provider: 'skillstore.io',
     endpoint: input.baseUrl,
     query: input.query,
@@ -305,7 +333,7 @@ function storeReport(input: {
  * search answer otherwise. Failures come back as a report with `error` (and a stale answer when
  * one is cached) instead of throwing, so the page keeps working through a registry wobble.
  */
-export async function getStoreReport(input: StoreInput = {}): Promise<StoreReport> {
+export async function getStoreReport(input: StoreInput = {}): Promise<StoreSkillReport> {
   const query = (input.query ?? '').trim().slice(0, 120);
   const limit = Math.min(50, Math.max(1, Math.round(input.limit ?? 12)));
   const page = Math.max(1, Math.round(input.page ?? 1));
@@ -337,7 +365,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreRepor
 
   const key = `${base}|${listing}|${query}|${limit}|${page}`;
   if (!input.refresh) {
-    const hit = cacheGet(key);
+    const hit = cacheGet(skillCache, key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
       return storeReport({
         items: hit.items,
@@ -371,7 +399,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreRepor
     const totalPages =
       asNumber(registryPage.totalPages) || Math.max(1, Math.ceil(total / limit));
     const items = rankStoreSkills(normalizeStoreSkills(payload), query);
-    cacheSet({ key, at: Date.now(), items, total, totalPages });
+    cacheSet(skillCache, { key, at: Date.now(), items, total, totalPages });
     return storeReport({
       items,
       total,
@@ -388,7 +416,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreRepor
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const hit = cacheGet(key);
+    const hit = cacheGet(skillCache, key);
     if (hit) {
       return storeReport({
         items: hit.items,
@@ -425,9 +453,534 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreRepor
   }
 }
 
+/** Trimmed, non-empty strings from an array; anything else is ignored. */
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((entry) => asString(entry).trim()).filter((entry) => entry !== '')
+    : [];
+}
+
+export interface StoreSkillDetailInput {
+  slug: string;
+  /** Skill directory names already in the source, so the dialog can mark the install. */
+  sourceSkills?: string[];
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Loads one skill's full record. The listing row is enough for a card; the dialog wants the
+ * whole description, the AI review (capabilities, limits, use cases) and the file list.
+ */
+export async function getStoreSkillDetail(input: StoreSkillDetailInput): Promise<StoreSkillDetail> {
+  const slug = input.slug.trim();
+  if (!SLUG_PATTERN.test(slug)) throw new AppError(400, '技能 slug 不合法');
+  const base = storeBaseUrl(input.baseUrl);
+  const response = await fetchWithRetry(
+    registryUrl(base, `/api/skills/${encodeURIComponent(slug)}`),
+    input.fetchImpl ?? fetch,
+    'application/json',
+  );
+  const payload: unknown = await response.json();
+  const record = asRecord(asRecord(payload).data ?? payload);
+  const skill = normalizeStoreSkill(record);
+  if (skill === null) throw new AppError(502, '技能商店返回的详情无法识别');
+
+  const name = asString(record.displayName) || asString(record.name) || skill.name;
+  const ai = asRecord(record.aiContent);
+  const audit = asRecord(record.securityAudit);
+  const presented = new Set(input.sourceSkills ?? []);
+  const files = registryEntries(record.fileStructure).flatMap((file) => {
+    const path = asString(file.path);
+    if (path === '') return [];
+    const lines = asNumber(file.lines);
+    return [{ path, type: asString(file.type) || 'file', ...(lines === 0 ? {} : { lines }) }];
+  });
+  const useCases = registryEntries(ai.use_cases).flatMap((entry) => {
+    const title = asString(entry.title);
+    const description = asString(entry.description);
+    return title === '' && description === '' ? [] : [{ title, description }];
+  });
+  const aiTitle = asString(ai.user_title);
+  const aiSummary = asString(record.summary);
+  const valueStatement = asString(ai.value_statement);
+  const securitySummary = asString(audit.summary);
+
+  return {
+    ...skill,
+    name,
+    inSource: presented.has(name) || presented.has(slug),
+    ...(aiTitle === '' ? {} : { aiTitle }),
+    ...(aiSummary === '' ? {} : { aiSummary }),
+    ...(valueStatement === '' ? {} : { valueStatement }),
+    capabilities: stringList(ai.actual_capabilities),
+    limitations: stringList(ai.limitations),
+    useCases,
+    files,
+    ...(securitySummary === '' ? {} : { securitySummary }),
+    riskFactors: stringList(record.riskFactors),
+    viewCount: asNumber(asRecord(record.stats).viewCount),
+  };
+}
+
 /** Test hook: drop the in-memory listing cache. */
 export function clearStoreCache(): void {
-  cache.clear();
+  skillCache.clear();
+  mcpCache.clear();
+}
+
+// ---- MCP catalog (official registry) ----
+//
+// `registry.modelcontextprotocol.io` speaks one search endpoint: `/v0/servers?limit&search&cursor`.
+// It reports no total and pages by cursor, so this catalog has no page numbers. Any mirror that
+// implements the same route can be swapped in with `AGENT_MANAGER_MCP_STORE_URL`.
+
+const DEFAULT_MCP_BASE_URL = 'https://registry.modelcontextprotocol.io';
+const MCP_MAX_LIMIT = 100;
+/** The registry ignores `search` shorter than this, so the page refuses it instead of guessing. */
+const MCP_MIN_SEARCH = 3;
+
+/** The registry mirror base URL: env override, always http(s), never with a trailing slash. */
+export function mcpStoreBaseUrl(override?: string): string {
+  const raw = (override ?? process.env.AGENT_MANAGER_MCP_STORE_URL ?? DEFAULT_MCP_BASE_URL).trim();
+  const trimmed = raw.replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(trimmed)) throw new AppError(400, 'MCP 商店地址必须是 http(s) URL');
+  return trimmed;
+}
+
+function registryEntries(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.map((entry) => asRecord(entry)) : [];
+}
+
+function inputDescription(record: Record<string, unknown>): { description?: string } {
+  const description = asString(record.description).trim();
+  return description === '' ? {} : { description };
+}
+
+/** Suggested servers.json key: the tail of the reverse-DNS name, cleaned for a JSON key. */
+function installNameFor(tail: string): string {
+  const cleaned = tail.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 100);
+  return cleaned === '' ? 'mcp-server' : cleaned;
+}
+
+/**
+ * Expands registry argument values into a command line. `null` means the option cannot run
+ * without something the dialog has no way to ask for, so the whole option is dropped.
+ */
+function argumentList(value: unknown): string[] | null {
+  const args: string[] = [];
+  for (const argument of registryEntries(value)) {
+    const name = asString(argument.name);
+    const supplied = asString(argument.value) || asString(argument.default);
+    if (supplied === '') {
+      if (argument.isRequired === true) return null;
+      continue;
+    }
+    if (asString(argument.type) === 'named' && name !== '') args.push(name, supplied);
+    else args.push(supplied);
+  }
+  return args;
+}
+
+/**
+ * Splits env/header inputs into values that are already known (defaults) and values the dialog
+ * must ask for. Optional inputs without a default are simply omitted. A value may itself be a
+ * template (`Bearer {api_key}`); declared variables that carry a default are filled in, and the
+ * remaining `{token}` placeholders become dialog variables that the dialog substitutes.
+ */
+function resolveInputs(
+  value: unknown,
+  target: 'env' | 'header',
+): { values: Record<string, string>; variables: StoreMcpVariable[] } {
+  const values: Record<string, string> = {};
+  const variables: StoreMcpVariable[] = [];
+  const seen = new Set<string>();
+  const addVariable = (variable: StoreMcpVariable) => {
+    const key = `${variable.target}:${variable.name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    variables.push(variable);
+  };
+  for (const input of registryEntries(value)) {
+    const name = asString(input.name);
+    if (name === '') continue;
+    const declared = asRecord(input.variables);
+    let supplied = asString(input.value) || asString(input.default);
+    for (const [token, entry] of Object.entries(declared)) {
+      const resolved = asString(asRecord(entry).value) || asString(asRecord(entry).default);
+      if (resolved !== '') supplied = supplied.replaceAll(`{${token}}`, resolved);
+    }
+    if (supplied === '') {
+      if (input.isRequired !== true) continue;
+      addVariable({
+        target,
+        name,
+        ...inputDescription(input),
+        ...(input.isSecret === true ? { isSecret: true } : {}),
+      });
+      continue;
+    }
+    const tokens = [
+      ...new Set([...supplied.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((match) => match[1] ?? '')),
+    ];
+    // An optional template nobody declared is left out rather than saved as a broken value.
+    if (tokens.length > 0 && input.isRequired !== true) continue;
+    values[name] = supplied;
+    for (const token of tokens) {
+      const spec = asRecord(declared[token]);
+      const description = asString(spec.description).trim() || asString(input.description).trim();
+      addVariable({
+        target: 'template',
+        name: token,
+        ...(description === '' ? {} : { description }),
+        ...(input.isSecret === true || spec.isSecret === true ? { isSecret: true } : {}),
+      });
+    }
+  }
+  return { values, variables };
+}
+
+/**
+ * Fills a remote URL's `{name}` tokens with registry defaults. Required tokens without a default
+ * stay in place and become dialog variables; a token the registry never declared makes the
+ * option unusable.
+ */
+function resolveRemoteUrl(
+  template: string,
+  value: unknown,
+): { url: string; variables: StoreMcpVariable[] } | null {
+  const declared = asRecord(value);
+  let url = template;
+  const variables: StoreMcpVariable[] = [];
+  for (const [name, entry] of Object.entries(declared)) {
+    const variable = asRecord(entry);
+    const supplied = asString(variable.value) || asString(variable.default);
+    if (supplied !== '') {
+      url = url.replaceAll(`{${name}}`, supplied);
+      continue;
+    }
+    if (variable.isRequired !== true) {
+      url = url.replaceAll(`{${name}}`, '');
+      continue;
+    }
+    variables.push({ target: 'url', name, ...inputDescription(variable) });
+  }
+  for (const match of url.matchAll(/\{([A-Za-z0-9_]+)\}/g)) {
+    if (!Object.hasOwn(declared, match[1] ?? '')) return null;
+  }
+  return { url, variables };
+}
+
+function packageOption(pkg: Record<string, unknown>): StoreMcpOption | null {
+  const registryType = asString(pkg.registryType);
+  const identifier = asString(pkg.identifier);
+  if (identifier === '') return null;
+  // A package that serves HTTP needs a running process; saving a remote URL would not start it.
+  const transport = asString(asRecord(pkg.transport).type);
+  if (transport !== '' && transport !== 'stdio') return null;
+
+  const version = asString(pkg.version);
+  const runtimeHint = asString(pkg.runtimeHint);
+  const runtime = argumentList(pkg.runtimeArguments);
+  const extra = argumentList(pkg.packageArguments);
+  if (runtime === null || extra === null) return null;
+  const inputs = resolveInputs(pkg.environmentVariables, 'env');
+
+  let command: string;
+  let args: string[];
+  switch (registryType) {
+    case 'npm':
+      command = runtimeHint || 'npx';
+      args = ['-y', version === '' ? identifier : `${identifier}@${version}`, ...runtime, ...extra];
+      break;
+    case 'pypi':
+      command = runtimeHint || 'uvx';
+      args = [version === '' ? identifier : `${identifier}==${version}`, ...runtime, ...extra];
+      break;
+    case 'oci':
+      command = runtimeHint || 'docker';
+      // The OCI identifier already carries its tag.
+      args = ['run', '-i', '--rm', ...runtime, identifier, ...extra];
+      break;
+    default:
+      return null;
+  }
+
+  return {
+    id: `pkg:${registryType}:${identifier}${version === '' ? '' : `@${version}`}`,
+    label: `${registryType} ${version === '' ? identifier : `${identifier}@${version}`}`,
+    transport: 'stdio',
+    server: {
+      transport: 'stdio',
+      command,
+      ...(args.length === 0 ? {} : { args }),
+      ...(Object.keys(inputs.values).length === 0 ? {} : { env: inputs.values }),
+    },
+    variables: inputs.variables,
+  };
+}
+
+function remoteOption(remote: Record<string, unknown>): StoreMcpOption | null {
+  const type = asString(remote.type);
+  const transport: McpTransport | null =
+    type === 'streamable-http' || type === 'http' ? 'http' : type === 'sse' ? 'sse' : null;
+  if (transport === null) return null;
+
+  const template = asString(remote.url);
+  if (!/^https?:\/\//i.test(template)) return null;
+  const resolved = resolveRemoteUrl(template, remote.variables);
+  if (resolved === null) return null;
+
+  const inputs = resolveInputs(remote.headers, 'header');
+  let host = resolved.url;
+  try {
+    host = new URL(resolved.url).host;
+  } catch {
+    // Keep the raw URL when it is still incomplete.
+  }
+
+  return {
+    id: `remote:${transport}:${resolved.url}`,
+    label: `${transport} ${host}`,
+    transport,
+    server: {
+      transport,
+      url: resolved.url,
+      ...(Object.keys(inputs.values).length === 0 ? {} : { headers: inputs.values }),
+    },
+    variables: [...resolved.variables, ...inputs.variables],
+  };
+}
+
+/** Maps one `/v0/servers` row (`{server, _meta}`) into the card the page renders. */
+export function normalizeMcpServer(raw: unknown): StoreMcpServer | null {
+  const entry = asRecord(raw);
+  const server = asRecord(entry.server);
+  const meta = asRecord(entry._meta);
+  const id = asString(server.name);
+  if (id === '') return null;
+  if (asString(meta.status) === 'deleted') return null;
+
+  const slash = id.lastIndexOf('/');
+  const owner = slash === -1 ? '' : id.slice(0, slash);
+  const tail = slash === -1 ? id : id.slice(slash + 1);
+
+  const options: StoreMcpOption[] = [];
+  const add = (option: StoreMcpOption | null): void => {
+    if (option !== null && !options.some((current) => current.id === option.id)) options.push(option);
+  };
+  for (const pkg of registryEntries(server.packages)) add(packageOption(pkg));
+  for (const remote of registryEntries(server.remotes)) add(remoteOption(remote));
+
+  const version = asString(server.version);
+  const repository = asString(asRecord(server.repository).url) || asString(server.repositoryUrl);
+  const websiteUrl = asString(server.websiteUrl);
+  const updatedAt = isoTimestamp(meta.updatedAt) ?? isoTimestamp(meta.publishedAt);
+
+  return {
+    id,
+    name: asString(server.title) || tail,
+    owner,
+    installName: installNameFor(tail),
+    summary: asString(server.description),
+    ...(version === '' ? {} : { version }),
+    ...(repository === '' ? {} : { repository }),
+    ...(websiteUrl === '' ? {} : { websiteUrl }),
+    ...(updatedAt === undefined ? {} : { updatedAt }),
+    options,
+    inSource: false,
+  };
+}
+
+/** Same mapping for a whole payload, with duplicate reverse-DNS names collapsed. */
+export function normalizeMcpServers(payload: unknown): StoreMcpServer[] {
+  const record = asRecord(payload);
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(record.servers)
+      ? (record.servers as unknown[])
+      : [];
+  const servers = new Map<string, StoreMcpServer>();
+  for (const entry of list) {
+    const server = normalizeMcpServer(entry);
+    if (server && !servers.has(server.id)) servers.set(server.id, server);
+  }
+  return [...servers.values()];
+}
+
+export interface McpStoreInput {
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  refresh?: boolean;
+  /** Keys already in ~/.agents/mcp/servers.json, so the page can mark them. */
+  sourceNames?: string[];
+  sourcePath?: string;
+  fetchImpl?: typeof fetch;
+  now?: () => number;
+  baseUrl?: string;
+}
+
+function mcpReport(input: {
+  items: StoreMcpServer[];
+  sourceNames: string[];
+  sourcePath: string;
+  baseUrl: string;
+  query: string;
+  listing: StoreListing;
+  limit: number;
+  nextCursor?: string;
+  fetchedAt: string;
+  cached: boolean;
+  stale?: boolean;
+  error?: string;
+}): StoreMcpReport {
+  const present = new Set(input.sourceNames);
+  return {
+    kind: 'mcp',
+    provider: 'MCP Registry',
+    endpoint: input.baseUrl,
+    query: input.query,
+    listing: input.listing,
+    // The registry pages by cursor and has no page numbers; the page keeps the cursor history.
+    page: 1,
+    limit: input.limit,
+    totalPages: 1,
+    total: 0,
+    ...(input.nextCursor === undefined || input.nextCursor === '' ? {} : { nextCursor: input.nextCursor }),
+    fetchedAt: input.fetchedAt,
+    cached: input.cached,
+    ...(input.stale === undefined ? {} : { stale: input.stale }),
+    ...(input.error === undefined ? {} : { error: input.error }),
+    sourcePath: input.sourcePath,
+    items: input.items.map((item) => ({ ...item, inSource: present.has(item.installName) })),
+  };
+}
+
+/**
+ * Fetches one page of the official MCP registry. Like the skills catalog this returns an `error`
+ * report (with the last cached page when there is one) instead of throwing, so the page survives
+ * a registry outage.
+ */
+export async function getMcpStoreReport(input: McpStoreInput = {}): Promise<StoreMcpReport> {
+  const query = (input.query ?? '').trim().slice(0, 120);
+  const cursor = (input.cursor ?? '').trim();
+  const limit = Math.min(MCP_MAX_LIMIT, Math.max(1, Math.round(input.limit ?? 24)));
+  const listing: StoreListing = query === '' ? 'featured' : 'search';
+  const fetchedAt = new Date(input.now?.() ?? Date.now()).toISOString();
+  const sourceNames = input.sourceNames ?? [];
+  const sourcePath = input.sourcePath ?? '';
+  const rawBase = (input.baseUrl ?? process.env.AGENT_MANAGER_MCP_STORE_URL ?? DEFAULT_MCP_BASE_URL).trim();
+
+  let base: string;
+  try {
+    base = mcpStoreBaseUrl(input.baseUrl);
+  } catch (error) {
+    return mcpReport({
+      items: [],
+      sourceNames,
+      sourcePath,
+      baseUrl: rawBase,
+      query,
+      listing,
+      limit,
+      fetchedAt,
+      cached: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (query !== '' && query.length < MCP_MIN_SEARCH) {
+    return mcpReport({
+      items: [],
+      sourceNames,
+      sourcePath,
+      baseUrl: base,
+      query,
+      listing,
+      limit,
+      fetchedAt,
+      cached: false,
+      error: `MCP 商店的搜索至少需要 ${MCP_MIN_SEARCH} 个字符`,
+    });
+  }
+
+  const key = `${base}|mcp|${listing}|${query}|${limit}|${cursor}`;
+  if (!input.refresh) {
+    const hit = cacheGet(mcpCache, key);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+      return mcpReport({
+        items: hit.items,
+        sourceNames,
+        sourcePath,
+        baseUrl: base,
+        query,
+        listing,
+        limit,
+        nextCursor: hit.nextCursor,
+        fetchedAt,
+        cached: true,
+      });
+    }
+  }
+
+  const url = registryUrl(base, '/v0/servers', {
+    limit,
+    version: 'latest',
+    ...(query === '' ? {} : { search: query }),
+    ...(cursor === '' ? {} : { cursor }),
+  });
+
+  try {
+    const response = await fetchWithRetry(url, input.fetchImpl ?? fetch, 'application/json', 'MCP 商店');
+    const payload = await response.json();
+    const items = normalizeMcpServers(payload);
+    const nextCursor = asString(asRecord(asRecord(payload).metadata).nextCursor);
+    cacheSet(mcpCache, { key, at: Date.now(), items, total: 0, totalPages: 1, nextCursor });
+    return mcpReport({
+      items,
+      sourceNames,
+      sourcePath,
+      baseUrl: base,
+      query,
+      listing,
+      limit,
+      nextCursor,
+      fetchedAt,
+      cached: false,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const hit = cacheGet(mcpCache, key);
+    if (hit) {
+      return mcpReport({
+        items: hit.items,
+        sourceNames,
+        sourcePath,
+        baseUrl: base,
+        query,
+        listing,
+        limit,
+        nextCursor: hit.nextCursor,
+        fetchedAt,
+        cached: true,
+        stale: true,
+        error: message,
+      });
+    }
+    return mcpReport({
+      items: [],
+      sourceNames,
+      sourcePath,
+      baseUrl: base,
+      query,
+      listing,
+      limit,
+      fetchedAt,
+      cached: false,
+      error: message,
+    });
+  }
 }
 
 // ---- installing a skill ----
@@ -727,4 +1280,43 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
+}
+
+// ---- installing an MCP server ----
+
+export interface StoreMcpInstallInput {
+  sourcePath: string;
+  snapshotRoot: string;
+  settingsFiles: SettingsFileDescriptor[];
+  request: StoreMcpInstallRequest;
+}
+
+/**
+ * Saves a registry server into the MCP source and syncs the selected agents. The definition comes
+ * from the install dialog, which has already filled every value the registry marked required.
+ * `runMcpAction` takes the source snapshot and one snapshots per agent file it rewrites.
+ */
+export function installStoreMcp(input: StoreMcpInstallInput): StoreMcpInstallResponse {
+  const name = validateServerName(String(input.request.name ?? '').trim());
+  const server = normalizeDefinition(input.request.server, name);
+  if (listMcpSourceNames(input.sourcePath).includes(name)) {
+    throw new AppError(409, `MCP 源里已经有 ${name}，先移除它（或换个名字）再安装`);
+  }
+
+  const result = runMcpAction(
+    {
+      sourcePath: input.sourcePath,
+      snapshotRoot: input.snapshotRoot,
+      settingsFiles: input.settingsFiles,
+    },
+    { action: 'saveSource', name, server, agents: input.request.agents ?? [] },
+  );
+
+  return {
+    message: result.message,
+    name,
+    snapshotIds: result.snapshotIds,
+    warnings: result.warnings,
+    report: result.report,
+  };
 }

@@ -8,14 +8,21 @@ import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
 import { cacheTargets, runCacheAction, scanCache } from './cache.ts';
 import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
-import { buildMcpReport, runMcpAction } from './mcp.ts';
+import { buildMcpReport, listMcpSourceNames, runMcpAction } from './mcp.ts';
 import { buildHooksReport, runHooksAction } from './hooks.ts';
 import { getModelsReport } from './models.ts';
 import { isInside, scanMatrix } from './scan.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
 import { createSettingsRegistry, readSettings, saveSettings } from './settings.ts';
 import { listSnapshots, restoreSnapshot } from './snapshot.ts';
-import { getStoreReport, installStoreSkill, listInstalledSkills } from './store.ts';
+import {
+  getMcpStoreReport,
+  getStoreReport,
+  getStoreSkillDetail,
+  installStoreMcp,
+  installStoreSkill,
+  listInstalledSkills,
+} from './store.ts';
 import { VERSION } from './version.ts';
 import { AppError } from '../shared/types.ts';
 import type {
@@ -32,6 +39,7 @@ import type {
   SettingsSaveRequest,
   SkillActionRequest,
   StoreInstallRequest,
+  StoreMcpInstallRequest,
 } from '../shared/types.ts';
 
 /** Base64-encoded UI files, keyed by path relative to dist/. Used by the standalone build. */
@@ -583,6 +591,21 @@ async function handleRequest(
     const params = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams;
     const limit = Number(params.get('limit') ?? '');
     const page = Number(params.get('page') ?? '');
+    if (params.get('kind') === 'mcp') {
+      json(
+        response,
+        200,
+        await getMcpStoreReport({
+          query: params.get('q') ?? '',
+          cursor: params.get('cursor') ?? '',
+          ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+          refresh: params.get('refresh') === '1',
+          sourceNames: listMcpSourceNames(config.mcpSource),
+          sourcePath: config.mcpSource,
+        }),
+      );
+      return;
+    }
     json(
       response,
       200,
@@ -595,6 +618,33 @@ async function handleRequest(
         sourcePath: config.source,
       }),
     );
+    return;
+  }
+
+  if (pathname === '/api/store/skill' && request.method === 'GET') {
+    const params = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams;
+    json(
+      response,
+      200,
+      await getStoreSkillDetail({
+        slug: params.get('slug') ?? '',
+        sourceSkills: listInstalledSkills(config.source),
+      }),
+    );
+    return;
+  }
+
+  if (pathname === '/api/store/install-mcp' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as StoreMcpInstallRequest;
+    const payload = await writes.run(() =>
+      installStoreMcp({
+        sourcePath: config.mcpSource,
+        snapshotRoot: config.snapshotRoot,
+        settingsFiles: config.settingsFiles,
+        request: body,
+      }),
+    );
+    json(response, 200, payload);
     return;
   }
 

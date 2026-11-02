@@ -20,7 +20,10 @@ import type {
   SettingsSaveResult,
   SnapshotManifest,
   StoreInstallResponse,
+  StoreMcpInstallResponse,
+  StoreMcpReport,
   StoreReport,
+  StoreSkillDetail,
 } from '../shared/types.ts';
 
 // Picked per run: the launcher keeps state under its data dir, so another instance on the
@@ -85,6 +88,31 @@ function storedZip(files: Record<string, string>): Buffer {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, directory, end]);
 }
+
+const REGISTRY_MCP = {
+  servers: [
+    {
+      server: {
+        name: 'io.github.acme/files',
+        title: 'Files',
+        description: 'Read and write files.',
+        version: '1.0.0',
+        repository: { url: 'https://github.com/acme/files' },
+        packages: [
+          {
+            registryType: 'npm',
+            identifier: '@acme/files-mcp',
+            version: '1.0.0',
+            transport: { type: 'stdio' },
+            environmentVariables: [{ name: 'ACME_KEY', isRequired: true, isSecret: true }],
+          },
+        ],
+      },
+      _meta: { status: 'active' },
+    },
+  ],
+  metadata: {},
+};
 
 const REGISTRY_SKILL = {
   slug: 'acme-latte',
@@ -206,6 +234,31 @@ before(async () => {
       );
       return;
     }
+    if (url.pathname === '/api/skills/acme-latte') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ...REGISTRY_SKILL,
+          name: 'latte',
+          summary: 'A calmer way to order coffee.',
+          riskFactors: ['external_commands'],
+          aiContent: {
+            user_title: 'Order a latte',
+            actual_capabilities: ['Brew a latte'],
+            limitations: ['No tea'],
+            use_cases: [{ title: 'Morning coffee', description: 'Brew one.' }],
+          },
+          fileStructure: [{ path: 'SKILL.md', type: 'file', lines: 9 }],
+          securityAudit: { summary: 'No shell execution found.' },
+        }),
+      );
+      return;
+    }
+    if (url.pathname === '/v0/servers') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(REGISTRY_MCP));
+      return;
+    }
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ data: [REGISTRY_SKILL], total: 1 }));
   });
@@ -221,6 +274,7 @@ before(async () => {
         ...process.env,
         AGENT_MANAGER_HOME: home,
         AGENT_MANAGER_STORE_URL: `http://127.0.0.1:${registryPort}`,
+        AGENT_MANAGER_MCP_STORE_URL: `http://127.0.0.1:${registryPort}`,
       },
       stdio: 'ignore',
     },
@@ -720,6 +774,21 @@ test('the store lists and searches the registry through the API', async () => {
   assert.ok(registryRequests.some((url) => url.startsWith('/api/skills?limit=12&page=1&q=coffee')));
 });
 
+test('the store previews one skill with the full registry record', async () => {
+  const detail = await call<StoreSkillDetail>('/api/store/skill?slug=acme-latte');
+  assert.equal(detail.name, 'latte');
+  assert.equal(detail.aiTitle, 'Order a latte');
+  assert.deepEqual(detail.capabilities, ['Brew a latte']);
+  assert.deepEqual(detail.files, [{ path: 'SKILL.md', type: 'file', lines: 9 }]);
+  assert.equal(detail.securitySummary, 'No shell execution found.');
+  assert.equal(detail.inSource, false);
+  assert.ok(registryRequests.includes('/api/skills/acme-latte'));
+
+  const unsafe = await fetch(`${BASE}/api/store/skill?slug=${encodeURIComponent('../escape')}`);
+  assert.equal(unsafe.status, 400);
+  await unsafe.arrayBuffer();
+});
+
 test('installing from the store links agents, marks the row and is snapshotted', async () => {
   const result = await call<StoreInstallResponse>('/api/store/install', {
     owner: 'acme',
@@ -760,4 +829,51 @@ test('the store install rejects unknown agents and unsafe slugs', async () => {
   assert.equal(unknownAgent, 400);
   const unsafe = await postStatus('/api/store/install', { owner: 'acme', slug: '../escape' });
   assert.equal(unsafe, 400);
+});
+
+test('the store searches and installs MCP servers from the registry', async () => {
+  const listing = await call<StoreMcpReport>('/api/store?kind=mcp&q=files');
+  assert.equal(listing.kind, 'mcp');
+  assert.equal(listing.sourcePath, join(home, '.agents', 'mcp', 'servers.json'));
+  assert.equal(listing.items[0]?.owner, 'io.github.acme');
+  assert.equal(listing.items[0]?.installName, 'files');
+  assert.equal(listing.items[0]?.inSource, false);
+  assert.equal(listing.items[0]?.options[0]?.server.command, 'npx');
+  assert.deepEqual(
+    listing.items[0]?.options[0]?.variables.map((variable) => `${variable.target}:${variable.name}`),
+    ['env:ACME_KEY'],
+  );
+  assert.ok(
+    registryRequests.some((url) => url.startsWith('/v0/servers?') && url.includes('search=files')),
+  );
+
+  const short = await call<StoreMcpReport>('/api/store?kind=mcp&q=mc');
+  assert.equal(short.items.length, 0);
+  assert.match(short.error ?? '', /至少需要 3 个字符/);
+
+  const installed = await call<StoreMcpInstallResponse>('/api/store/install-mcp', {
+    name: 'files',
+    agents: ['claude', 'codex'],
+    server: {
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@acme/files-mcp@1.0.0'],
+      env: { ACME_KEY: 'k' },
+    },
+  });
+  assert.equal(installed.name, 'files');
+  assert.ok(installed.snapshotIds.length >= 1);
+  assert.equal(installed.report.rows.find((row) => row.name === 'files')?.inSource, true);
+
+  const source = JSON.parse(readFileSync(join(home, '.agents', 'mcp', 'servers.json'), 'utf8'));
+  assert.equal(source.servers.files.env.ACME_KEY, 'k');
+
+  const relisted = await call<StoreMcpReport>('/api/store?kind=mcp&q=files');
+  assert.equal(relisted.items[0]?.inSource, true);
+
+  const conflict = await postStatus('/api/store/install-mcp', {
+    name: 'files',
+    server: { transport: 'stdio', command: 'npx' },
+  });
+  assert.equal(conflict, 409);
 });
