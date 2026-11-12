@@ -55,6 +55,10 @@ test('listBuiltinSkills carries the whole preview and follows the source', () =>
     assert.equal(skillify.license, 'MIT');
     assert.ok(skillify.files.some((file) => file.path === 'SKILL.md'));
     assert.ok(skillify.capabilities.length > 0);
+    const cpp = before.items.find((item) => item.slug === 'cpp-windows-debug');
+    assert.ok(cpp, 'cpp-windows-debug ships with the app');
+    assert.equal(cpp.builtin, true);
+    assert.ok(cpp.files.some((file) => file.path === 'references/cdb-cheatsheet.md'));
     assert.equal(before.sourcePath, fixture.source);
 
     mkdirSync(join(fixture.source, 'skillify'), { recursive: true });

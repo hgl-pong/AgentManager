@@ -55,6 +55,29 @@ const BUILTINS: BuiltinSpec[] = [
       { title: '交接给其他 agent', description: '生成标准 SKILL.md，Claude Code、Cursor、Codex 等都能读取。' },
     ],
   },
+  {
+    slug: 'cpp-windows-debug',
+    owner: 'heguoling',
+    summary:
+      '在 Windows 上用 CMake / MSVC / MSBuild / Incredibuild 构建 C++ 项目，再用 cdb 脚本或 Visual Studio 调试器定位崩溃、异常与状态问题。',
+    version: '1.0.0',
+    license: 'MIT',
+    repository: '',
+    capabilities: [
+      '发现工具链（vswhere、CMake、cdb、Incredibuild）并按项目规模选择构建引擎',
+      '生成或定位 .sln，按 Debug / Release 构建并核对 exe、PDB 与编译告警',
+      '用 cdb 脚本设断点，查看调用栈、局部变量与 STL 值，处理异常、转储与附加进程',
+      '按最小改动修复后重新构建，并用同一脚本回归验证',
+    ],
+    limitations: [
+      '只覆盖 Windows 上的 MSVC / CMake 工具链，不处理 Linux 或 macOS 构建',
+      'Incredibuild 槽位被占用时只报告等待，不会抢占其他任务的构建',
+    ],
+    useCases: [
+      { title: '构建并调试 C++ 工程', description: '从配置 CMake 到命中断点，把构建与调试串成一条可复现的流程。' },
+      { title: '分析崩溃与转储', description: '用 cdb 捕获异常记录和故障栈，或在 dump 上做上下文恢复与 `!analyze`。' },
+    ],
+  },
 ];
 
 interface BuiltinFile {
