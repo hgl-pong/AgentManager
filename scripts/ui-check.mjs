@@ -5,12 +5,30 @@
 //   npm run build && npm run verify:ui
 //
 // Not part of `npm test`: it needs a local Edge/Chrome and takes ~20s.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** Windows kills the browser parent only; taskkill /T also ends its renderer/GPU children. */
+function killTree(child) {
+  if (!child) return;
+  if (process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+      /* already gone */
+    }
+    return;
+  }
+  try {
+    child.kill();
+  } catch {
+    /* already gone */
+  }
+}
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -323,6 +341,39 @@ try {
   const skillText = await page.eval(`return document.querySelector('table').innerText;`);
   check('skills matrix renders rows', skillText.includes('alpha'), skillText.split('\n').slice(0, 3).join(' | '));
 
+  // 1b. A source skill can be deleted, and cancelling the destructive dialog changes nothing.
+  const deleteAction = await page.eval(`
+    const button = [...document.querySelectorAll('.skill-delete')].find((b) => b.closest('tr')?.innerText.includes('alpha'));
+    return { present: Boolean(button), label: button?.textContent ?? '' };
+  `);
+  check('source rows offer a delete action', deleteAction.present && deleteAction.label === '删除', JSON.stringify(deleteAction));
+  await page.eval(`
+    [...document.querySelectorAll('.skill-delete')].find((b) => b.closest('tr')?.innerText.includes('alpha'))?.click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const deleteDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.innerText,
+      focused: document.activeElement?.textContent ?? '',
+    };
+  `);
+  check(
+    'skill delete names the source and defaults to cancel',
+    deleteDialog.title.includes('删除 skill alpha') &&
+      deleteDialog.body.includes('.agents') &&
+      deleteDialog.focused === '取消',
+    JSON.stringify(deleteDialog).slice(0, 200),
+  );
+  await page.eval(`document.querySelector('dialog.confirm-dialog').dispatchEvent(new Event('cancel', {cancelable:true})); return true;`);
+  await sleep(200);
+  const deleteCancelled = await page.eval(
+    `return !document.querySelector('dialog.confirm-dialog') && Boolean(document.querySelector('.skill-delete'));`,
+  );
+  check('cancelling skill delete leaves the source intact', deleteCancelled);
+
   // 2. Prompt editor marks dirty and blocks navigation with a modal <dialog>.
   await page.eval(`
     document.querySelector('[aria-controls="workspace-panel"][id="nav-prompts"]').click();
@@ -387,6 +438,8 @@ try {
   if (hasPicker) {
     await page.eval(`document.querySelector('.model-picker-trigger').click(); return true;`);
     await page.waitForFn(`document.querySelector('.model-picker-panel')`);
+    // The endpoint list arrives after the panel mounts; wait for it before asserting the rows.
+    await page.waitForFn(`document.querySelectorAll('.model-picker-option').length === 3 || Boolean(document.querySelector('.model-picker-none'))`);
     const panel = await page.eval(`return {
       search: Boolean(document.querySelector('.model-picker-search')),
       options: document.querySelectorAll('.model-picker-option').length,
@@ -402,7 +455,7 @@ try {
       box.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     `);
-    await sleep(150);
+    await page.waitForFn(`document.querySelectorAll('.model-picker-option').length === 1`);
     const filtered = await page.eval(`return {
       options: [...document.querySelectorAll('.model-picker-option')].map((b) => b.textContent),
       custom: document.querySelector('.model-picker-custom')?.textContent ?? '',
@@ -740,7 +793,7 @@ try {
   await sleep(200);
   const narrowed = await page.eval(`return {
     rows: document.querySelectorAll('table tbody tr').length,
-    names: [...document.querySelectorAll('table tbody th[scope="row"]')].map((th) => th.textContent),
+    names: [...document.querySelectorAll('table tbody th[scope="row"]')].map((th) => th.querySelector('.skill-name')?.textContent ?? th.textContent),
   };`);
   check(
     'the agent filter shows only that agent’s unlinked skills',
@@ -1514,6 +1567,7 @@ try {
   check('the install notice links to the Skills page', noticeLink === '去 Skills 查看', noticeLink);
   await page.eval(`document.querySelector('.store-page .notice .notice-link').click(); return true;`);
   await page.waitForFn(`document.querySelector('#nav-skills')?.getAttribute('aria-selected') === 'true'`);
+  await page.waitForFn(`document.querySelector('table tbody tr')`);
   check(
     'the install notice opens the Skills page',
     await page.eval(`return Boolean(document.querySelector('table tbody tr'));`),
@@ -1609,7 +1663,7 @@ try {
   } catch {
     /* ignore */
   }
-  edge.kill();
+  killTree(edge);
   server.kill();
   modelStub.close();
   storeStub.close();

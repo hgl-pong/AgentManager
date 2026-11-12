@@ -1,5 +1,6 @@
 /* ==========================================================================
-   Tables — dense matrix surface with sticky header and frozen first column
+   Tables — ledger surface with sticky header, frozen first column and
+   hairline column rules
    ========================================================================== */
 
 .table-wrap {
@@ -7,7 +8,7 @@
   overflow: auto;
   scrollbar-gutter: stable;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -27,14 +28,14 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  height: 32px;
+  height: 30px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--text-dim);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   font-weight: var(--fw-medium);
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
   text-align: left;
   white-space: nowrap;
 }
@@ -48,6 +49,22 @@ thead th:first-child {
   left: 0;
   z-index: 3;
   background: var(--surface-2);
+}
+
+/* Agent columns carry their identity as a small square, not a wash. */
+thead th[class*='agent-']::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  background: var(--agent-color, var(--text-dim));
+  content: '';
+  vertical-align: 0;
+}
+
+thead th[class*='agent-'].undetected::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 tbody th[scope='row'] {
@@ -64,6 +81,13 @@ tbody td {
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-sm);
   vertical-align: middle;
+}
+
+/* Hairline column rules make the matrix read as a ledger, not a card grid. */
+tbody td + td,
+tbody th[scope='row'] + td,
+thead th + th {
+  border-left: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
 tbody tr:last-child > * {
@@ -103,9 +127,9 @@ tbody tr.outside-source th {
   display: block;
   margin-top: 1px;
   color: var(--text-dim);
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: var(--fs-2xs);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-regular);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   text-transform: none;
@@ -122,12 +146,24 @@ tbody tr.outside-source th {
   white-space: nowrap;
 }
 
-.cell-state {
+.cell-state,
+.mcpm-state {
   display: inline-block;
   min-width: 28px;
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   letter-spacing: 0;
+}
+
+.cell-state::before,
+.mcpm-state::before {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 5px;
+  background: currentColor;
+  content: '';
+  vertical-align: 1px;
 }
 
 .cell.state-linked .cell-state {
@@ -168,21 +204,45 @@ tbody tr.outside-source th {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 4px;
-  margin-top: 6px;
+  gap: 2px 8px;
+  margin-top: 3px;
 }
 
 .cell-actions button {
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
   font-size: var(--fs-xs);
   font-weight: var(--fw-medium);
-  opacity: 0.65;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text) 35%, transparent);
+  text-underline-offset: 2px;
+  opacity: 0.85;
+}
+
+.cell-actions button:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  text-decoration-color: currentColor;
+}
+
+.cell-actions button:disabled {
+  opacity: 0.4;
+  text-decoration: none;
 }
 
 tr:hover button,
 tr:focus-within button {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .cell-actions button {
+    opacity: 1;
+  }
 }
 
 .cell-note {
@@ -198,9 +258,9 @@ tr:focus-within button {
 
 .state-swatch {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
   background: var(--text-dim);
 }
 

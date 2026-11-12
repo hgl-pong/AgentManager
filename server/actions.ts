@@ -1,5 +1,16 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { AppError } from '../shared/types.ts';
 import { createSnapshot, markSnapshotFailed } from './snapshot.ts';
 import { hasSkillFile } from './scan.ts';
@@ -12,6 +23,13 @@ export interface SkillActionInput {
   source: string;
   agentRoot: string;
   agentLabel: string;
+  name: string;
+  snapshotRoot: string;
+}
+
+export interface DeleteSkillInput {
+  source: string;
+  agents: Array<{ root: string; label: string }>;
   name: string;
   snapshotRoot: string;
 }
@@ -206,5 +224,99 @@ export function unlinkSkill(input: SkillActionInput): SkillActionReport {
     agent: input.agentLabel,
     snapshotId: snapshot.id,
     message: `已移除 ${input.agentLabel} 里的 ${input.name} 链接，快照 ${snapshot.id} 可还原`,
+  };
+}
+
+/** Comparison form for link targets: Windows compares case-insensitively and accepts both separators. */
+function samePath(left: string, right: string): boolean {
+  const normalize = (value: string): string => {
+    const unified = process.platform === 'win32' ? value.replaceAll('/', '\\') : value;
+    const trimmed = unified.replace(/[\\/]+$/, '');
+    return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed;
+  };
+  return normalize(left) === normalize(right);
+}
+
+/** The target a link points at, even when the link is dangling and realpath cannot resolve it. */
+function linkTargetOf(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      const raw = readlinkSync(path);
+      return isAbsolute(raw) ? raw : resolve(dirname(path), raw);
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * Deletes a skill from the single source and removes the links that point at it. Independent
+ * copies and links that point somewhere else are deliberately kept: they are not this source
+ * entry, and silently deleting them would discard content the user did not select.
+ */
+export function deleteSourceSkill(input: DeleteSkillInput): SkillActionReport {
+  assertSafeName(input.name);
+  const sourcePath = join(input.source, input.name);
+  assertInside(input.source, sourcePath);
+
+  const sourceStat = lstatOrNull(sourcePath);
+  if (!sourceStat || !hasSkillFile(sourcePath)) {
+    throw new AppError(404, `源里没有这个 skill：${input.name}`);
+  }
+
+  // A source entry can itself be a link; compare agent links against both the entry and its target.
+  const sourceTargets = new Set([sourcePath]);
+  try {
+    sourceTargets.add(realpathSync(sourcePath));
+  } catch {
+    // A dangling source link has no realpath; the raw path above is the only identity.
+  }
+
+  const removable: Array<{ path: string; label: string }> = [];
+  let kept = 0;
+  for (const agent of input.agents) {
+    const agentPath = join(agent.root, input.name);
+    assertInside(agent.root, agentPath);
+    const stat = lstatOrNull(agentPath);
+    if (!stat) continue;
+
+    if (!stat.isSymbolicLink()) {
+      kept += 1;
+      continue;
+    }
+    const target = linkTargetOf(agentPath);
+    if (target !== null && [...sourceTargets].some((candidate) => samePath(target, candidate))) {
+      removable.push({ path: agentPath, label: agent.label });
+    } else {
+      kept += 1;
+    }
+  }
+
+  const snapshot = createSnapshot(input.snapshotRoot, `delete ${input.name}`, [
+    sourcePath,
+    ...removable.map((entry) => entry.path),
+  ]);
+  try {
+    for (const entry of removable) unlinkSync(entry.path);
+    if (sourceStat.isSymbolicLink()) unlinkSync(sourcePath);
+    else rmSync(sourcePath, { recursive: true, force: true });
+  } catch (error) {
+    markSnapshotFailed(input.snapshotRoot, snapshot.id);
+    throw error;
+  }
+
+  const linkNote =
+    removable.length > 0
+      ? `，移除 ${removable.length} 个链接（${removable.map((entry) => entry.label).join('、')}）`
+      : '';
+  const keptNote = kept > 0 ? `；保留 ${kept} 个独立副本或外部链接` : '';
+  return {
+    action: 'delete',
+    name: input.name,
+    agent: '源',
+    snapshotId: snapshot.id,
+    message: `已从源删除 ${input.name}${linkNote}${keptNote} · 快照 ${snapshot.id} 可还原`,
   };
 }

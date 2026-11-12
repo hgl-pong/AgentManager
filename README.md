@@ -4,7 +4,7 @@
 
 做的事情：
 
-- **skills 矩阵** — 一屏看清每个 skill 在哪个 agent 里生效、哪些是副本、哪些链接已经断了，并能建链、把孤儿副本收进源、移除多余副本。
+- **skills 矩阵** — 一屏看清每个 skill 在哪个 agent 里生效、哪些是副本、哪些链接已经断了，并能建链、把孤儿副本收进源、移除多余副本，或从源里删除 skill（同时移除指向它的链接；独立副本和外部链接保留，删除前自动快照）。
 - **提示词单一源** — `~/.agents/prompts/global.md` 是唯一正文，`CLAUDE.md` / `AGENTS.md` 通过硬链接指向它，改一处全部生效。
 - **settings 可编辑** — 按 Claude Code / Codex / pi 的官方 schema 渲染分组表单，文件里没有的设置项也能填（留空即不写入）；MCP server 有结构化编辑器，每个文件还有原始 JSON/TOML 编辑器；写入前自动快照，外部改动用 etag 检测冲突。
 - **模型从本地端点读取** — 默认请求 `http://127.0.0.1:15721/v1/models`，在「模型」页签里为三个 agent 分别选择模型；模型字段也带候选列表，支持手动输入。来源可用 `AGENT_MANAGER_MODELS_URL` 覆盖。
@@ -17,23 +17,23 @@
 
 ### 商店页怎么用
 
-- 搜索框左边切 `Skills` / `MCP`。Skills 的源是 [skillstore.io](https://skillstore.io)：搜索框留空时列出它的目录（每行带分类、风险级别、许可证与质量分），输入关键词回车即搜；同名技能会排在前面。
+- 左侧「目录」栏切 `Skills` / `MCP`。Skills 的源是 [skillstore.io](https://skillstore.io)：搜索框留空时列出它的目录（每行带分类、风险级别、许可证与质量分），输入关键词回车即搜；同名技能会排在前面。
 - `Skills` 第一页顶部是「内置技能」栏：原文打包在应用里（目前是 skillify 与 cpp-windows-debug，均为 MIT），预览不请求注册表；安装把文件复制进 `~/.agents/skills/<name>` 再按勾选建链，弹窗里写明目的地与目标 agent。搜索时按名称 / 摘要 / 能力在本地匹配，第 2 页起不再重复出现。
 - 点卡片本身（不是「安装」）先打开预览：skill 会即时读取完整记录——完整描述、能力 / 限制 / 使用场景、文件结构、安全审查摘要、风险因素、仓库与下载收藏数；MCP server 列出全部安装方式、每个方式要填的变量以及仓库 / 官网。预览底部也能直接安装，键盘 `Enter` / 空格同样能打开。
 - Skills 一页 24 个，底部「上一页 / 下一页」带「第 N / M 页」（M 是注册表给出的总页数，热门目录 280 页左右）；换页会自动滚回列表顶部，换关键词或点「热门」会回到第 1 页。
 - MCP 的源是官方 Registry：它只按名称搜索且至少 3 个字符，没有总数、按游标翻页，所以底部只显示「第 N 页」。卡片上是 server 的反向域名名、标题、描述与可用的传输方式。
-- 页右上「中文 / English / 双语」切换整个商店页的文案（默认中文，选择记在本地）；skill 与 MCP server 自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
-- 「安装后链接到 / 同步到」勾选目标 agent（默认跟随已检测到的 agent）。Skills 卡片上的「安装」先弹确认框，写明要下的 `owner/slug`、落地的绝对路径、会建哪些链接，以及发布者 / 风险 / 质量；带脚本的 skill 会单独提醒。
+- 左侧「语言」栏的「中文 / English / 双语」切换整个商店页的文案（默认中文，选择记在本地）；skill 与 MCP server 自己的名字、描述、许可证是发布者写什么就是什么，不做机器翻译。
+- 左侧「安装后链接到 / 同步到」勾选目标 agent（默认跟随已检测到的 agent）。Skills 卡片上的「安装」先弹确认框，写明要下的 `owner/slug`、落地的绝对路径、会建哪些链接，以及发布者 / 风险 / 质量；带脚本的 skill 会单独提醒。
 - MCP 卡片上的「安装」打开安装弹窗：可选 `npm` / `pypi` / `oci` 包或 `http` / `sse` 远端地址，改名后写入源；注册表标为必填且没有默认值的 env / header / URL 变量在这里填写（密钥用密码框），`Bearer {token}` 这类值里的占位符同样逐个列出、安装时替换，默认值已自动带好。sse 会提示 Codex 与 pi 不支持。
 - Skills 安装分两步：先读 `…/manifest` 拿到下载地址和 sha256，再下 ZIP 到 `data/tmp/` 校验（校验值、ZIP 头、必须有 `SKILL.md`、路径不许越界），最后整体 `move` 进源目录；任何一步失败都不会在源里留下半个 skill。
 - MCP 安装写进源后，逐个 agent 文件各建一份快照再同步；提示里的快照 id 可在快照面板整体撤销。
-- 「源里已有」表示源目录（或 MCP 源）里已经有同名条目；先到 Skills / MCP 页移除或改名再装。
+- 「源里已有」表示源目录（或 MCP 源）里已经有同名条目；skill 到 Skills 页对应行点「删除」，MCP 到 MCP 页从源移除，或先改名再装。
 - 两个注册表默认 `https://skillstore.io` 与 `https://registry.modelcontextprotocol.io`，可分别用 `AGENT_MANAGER_STORE_URL` / `AGENT_MANAGER_MCP_STORE_URL` 指向实现同一接口的镜像；注册表挂了会显示上次的缓存并标注抓取时间。
 - 下载的临时目录默认 `data/tmp/`（`AGENT_MANAGER_STORE_TEMP` 可改），安装成功或失败都会清空。
 
 ### 设置页怎么用
 
-- 选择 agent 后按「模型 / 常用 / 分组 / MCP servers / 原始文件」切换；字段说明来自官方 schema（中文），文件里没有的键也会显示，填了才写入，清空即删除。
+- 选择 agent 后，页签下方显示该 agent 的配置文件条（文件角色、路径与字节数）；左侧索引按「模型 / 常用 / 分组 / MCP servers / 原始文件」切换。字段说明来自官方 schema（中文），文件里没有的键也会显示，填了才写入，清空即删除。
 - 「模型」页签从本地 OpenAI 兼容端点读取模型清单，为 Claude Code（`env.ANTHROPIC_MODEL` 或 `model`）、Codex（`model`）、pi（`defaultModel`）分别选择；选择后点底部「保存全部」。
 - 「MCP」页签以 `~/.agents/mcp/servers.json` 为源：先把现有 agent 里的 server 收进源，再同步到全部 agent；同名定义不一致会标为「有差异」，可同步或以某一格为准更新源。写入前自动快照。
 - 「Hooks」页签以 `~/.agents/hooks/hooks.json` 为源，按事件分别保存 Claude/Codex 的 matcher 组与 handler；Codex 修改后需要在 Codex 里用 `/hooks` 重新信任。
@@ -114,7 +114,7 @@ release/    独立程序产物（git 忽略）
 data/       快照、回收站与运行状态（git 忽略）
 ```
 
-约定与决策记录在 `goal-and-requirements.md`、`architecture.md`、`server/SPEC*.md`；界面功能清单与重设计说明在 `docs/ui-redesign-brief.md`。
+约定与决策记录在 `goal-and-requirements.md`、`architecture.md`、`server/SPEC*.md`；界面功能清单与重设计说明在 `docs/ui-redesign-brief.md`；视觉方向与色板/字体/几何约定在 `DESIGN.md`。
 
 ## 边界
 

@@ -125,6 +125,16 @@
   white-space: nowrap;
 }
 
+.model-card-title strong::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  background: var(--agent-color, var(--text-dim));
+  content: '';
+  vertical-align: 0;
+}
+
 .model-card-target {
   display: flex;
   flex-direction: column;

@@ -57,7 +57,7 @@
   margin-top: var(--space-5);
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -111,7 +111,7 @@
   margin-top: var(--space-7);
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -121,7 +121,7 @@
 }
 
 .snapshots-panel > header h2 {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-heading);
   font-weight: var(--fw-semibold);
 }
 

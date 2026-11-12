@@ -28,6 +28,50 @@
   min-width: 220px;
 }
 
+/* The source row owns the only skill-level removal; agent cells keep their own copy actions. */
+.skill-name {
+  display: block;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+}
+
+.skill-row-actions {
+  display: flex;
+  margin-top: 1px;
+}
+
+.skill-delete {
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-family: var(--font-sans);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  text-underline-offset: 2px;
+  opacity: 0.78;
+}
+
+.skill-delete:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  text-decoration-color: currentColor;
+  opacity: 1;
+}
+
+.skill-delete:disabled {
+  opacity: 0.4;
+}
+
+.skills-page tr:hover .skill-delete {
+  opacity: 1;
+}
+
 .skills-page table thead th:not(:first-child) {
   min-width: 150px;
 }
@@ -40,16 +84,6 @@
 
 .skills-page .cell-actions {
   margin-top: var(--space-1);
-}
-
-/* Row actions stay reachable but stay quiet until the row is hovered or focused. */
-.skills-page .cell-actions button {
-  opacity: 0.55;
-}
-
-.skills-page tr:hover .cell-actions button,
-.skills-page tr:focus-within .cell-actions button {
-  opacity: 1;
 }
 
 .skills-page .empty-state p {

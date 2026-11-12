@@ -3,13 +3,14 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { importSkill, linkSkill, moveDirectory, removeSkill, unlinkSkill } from './actions.ts';
+import { deleteSourceSkill, importSkill, linkSkill, moveDirectory, removeSkill, unlinkSkill } from './actions.ts';
 import { listSnapshots, restoreSnapshot } from './snapshot.ts';
 import { AppError } from '../shared/types.ts';
 
 let root: string;
 let source: string;
 let agentRoot: string;
+let secondAgentRoot: string;
 let snapshotRoot: string;
 
 function writeSkill(dir: string, body: string): void {
@@ -21,8 +22,10 @@ before(() => {
   root = mkdtempSync(join(tmpdir(), 'agent-manager-act-'));
   source = join(root, 'source');
   agentRoot = join(root, 'agent', 'skills');
+  secondAgentRoot = join(root, 'agent2', 'skills');
   snapshotRoot = join(root, 'snapshots');
   mkdirSync(agentRoot, { recursive: true });
+  mkdirSync(secondAgentRoot, { recursive: true });
   writeSkill(join(source, 'shared'), 'shared-v1');
 });
 
@@ -31,7 +34,7 @@ after(() => {
 });
 
 const input = (name: string) => ({ source, agentRoot, agentLabel: 'TestAgent', name, snapshotRoot });
-const allowedRoots = () => [source, agentRoot];
+const allowedRoots = () => [source, agentRoot, secondAgentRoot];
 
 test('linkSkill points the agent at the source skill', () => {
   const report = linkSkill(input('shared'));
@@ -119,6 +122,52 @@ test('unlinkSkill refuses a real directory and a missing name', () => {
   writeSkill(join(agentRoot, 'plain'), 'v1');
   assert.throws(() => unlinkSkill(input('plain')), /不是链接/);
   assert.throws(() => unlinkSkill(input('absent')), /里没有/);
+});
+
+test('deleteSourceSkill removes the source and its links but keeps copies', () => {
+  writeSkill(join(source, 'full'), 'full-v1');
+  symlinkSync(join(source, 'full'), join(agentRoot, 'full'), 'junction');
+  writeSkill(join(secondAgentRoot, 'full'), 'copy-v1');
+
+  const report = deleteSourceSkill({
+    source,
+    agents: [
+      { root: agentRoot, label: 'TestAgent' },
+      { root: secondAgentRoot, label: 'SecondAgent' },
+    ],
+    name: 'full',
+    snapshotRoot,
+  });
+
+  assert.equal(report.action, 'delete');
+  assert.match(report.message, /移除 1 个链接/);
+  assert.match(report.message, /保留 1/);
+  assert.equal(existsSync(join(source, 'full')), false);
+  assert.throws(() => lstatSync(join(agentRoot, 'full')));
+  assert.equal(readFileSync(join(secondAgentRoot, 'full', 'SKILL.md'), 'utf8'), 'copy-v1');
+
+  restoreSnapshot(snapshotRoot, report.snapshotId, allowedRoots());
+  assert.equal(readFileSync(join(source, 'full', 'SKILL.md'), 'utf8'), 'full-v1');
+  assert.equal(realpathSync(join(agentRoot, 'full')), realpathSync(join(source, 'full')));
+  assert.equal(readFileSync(join(secondAgentRoot, 'full', 'SKILL.md'), 'utf8'), 'copy-v1');
+});
+
+test('deleteSourceSkill leaves a same-name link that points outside the source', () => {
+  const external = join(root, 'outside-target');
+  writeSkill(external, 'outside-v1');
+  writeSkill(join(source, 'outside-name'), 'source-v1');
+  symlinkSync(external, join(agentRoot, 'outside-name'), 'junction');
+
+  const report = deleteSourceSkill({
+    source,
+    agents: [{ root: agentRoot, label: 'TestAgent' }],
+    name: 'outside-name',
+    snapshotRoot,
+  });
+
+  assert.match(report.message, /移除 0 个链接|保留 1/);
+  assert.equal(existsSync(join(source, 'outside-name')), false);
+  assert.equal(realpathSync(join(agentRoot, 'outside-name')), realpathSync(external));
 });
 
 const isStatus = (status: number) => (error: unknown) => error instanceof AppError && error.status === status;

@@ -1038,7 +1038,12 @@ export function SettingsView({
             <h2>{title}</h2>
             <p className="meta">
               {setCount}/{total} 已设置
-              {formDraft.file.path ? ` · ${formDraft.file.path}` : ''}
+              {formDraft.file.path && (
+                <>
+                  {' · '}
+                  <code title={formDraft.file.path}>{compactPath(formDraft.file.path)}</code>
+                </>
+              )}
             </p>
           </div>
           {formDraft.error && <span className="tag dirty">保存失败</span>}
@@ -1163,7 +1168,7 @@ export function SettingsView({
 
           <div className="model-cards">
             {targets.map((target) => (
-              <article className="model-card" key={target.agentKey}>
+              <article className={`model-card agent-${target.agentKey}`} key={target.agentKey}>
                 <header className="model-card-head">
                   <div className="model-card-title">
                     <strong>{target.agentLabel}</strong>
@@ -1587,7 +1592,7 @@ export function SettingsView({
               role="tab"
               aria-selected={selected}
               aria-controls="settings-panel-body"
-              className={selected ? 'agent-tab is-active' : 'agent-tab'}
+              className={`${selected ? 'agent-tab is-active' : 'agent-tab'} agent-${entry.key}`}
               onClick={() => void chooseAgent(entry.key)}
             >
               <span className={detected ? 'agent-dot is-detected' : 'agent-dot'} aria-hidden="true" />
@@ -1598,6 +1603,31 @@ export function SettingsView({
             </button>
           );
         })}
+      </div>
+
+      <div className="agent-files" aria-label={`${agent.label} 的配置文件`}>
+        {agentFiles.map((file) => (
+          <div
+            className={`agent-file${file.exists ? '' : ' is-missing'}${file.parseError ? ' is-error' : ''}`}
+            key={file.id}
+            title={file.path}
+          >
+            <span className="agent-file-label">
+              {file.label} · {file.role}
+            </span>
+            <code>{compactPath(file.path)}</code>
+            <span className="agent-file-state">
+              {file.parseError
+                ? '解析失败'
+                : !file.exists
+                  ? '未创建'
+                  : file.bytes === undefined
+                    ? '已存在'
+                    : `${file.bytes} 字节`}
+            </span>
+          </div>
+        ))}
+        {agentFiles.length === 0 && <span className="hint">没有配置文件</span>}
       </div>
 
       <div className="settings-body" id="settings-panel-body" role="tabpanel" aria-label={`${agent.label} 设置`}>

@@ -1,11 +1,29 @@
 // Ad-hoc visual review: boots the real server against a throwaway home, then writes one PNG per
 // tab (light + dark) so the redesign can be eyeballed without a browser window.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** Windows kills the browser parent only; taskkill /T also ends its renderer/GPU children. */
+function killTree(child) {
+  if (!child) return;
+  if (process.platform === 'win32') {
+    try {
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+      /* already gone */
+    }
+    return;
+  }
+  try {
+    child.kill();
+  } catch {
+    /* already gone */
+  }
+}
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = join(REPO, '.build', 'shots');
@@ -306,7 +324,7 @@ try {
     }).catch(() => {});
   } catch {}
   socket?.close();
-  edge.kill();
+  killTree(edge);
   server.kill();
   modelStub.close();
   await sleep(400);

@@ -339,36 +339,38 @@ export function HooksView({ version, onChanged }: { version: number; onChanged: 
         </div>
       )}
 
-      <div className="legend-bar">
-        <ul className="legend mcpm-legend hook-legend" aria-label="状态图例">
-          {(Object.keys(LABEL) as HookState[]).map((state) => {
-            const count = stateCounts.get(state) ?? 0;
-            return (
-              <li key={state}>
-                <button
-                  type="button"
-                  className="legend-filter"
-                  aria-pressed={onlyState === state}
-                  title={count > 0 ? `只看${LABEL[state]}的事件` : `没有${LABEL[state]}的事件`}
-                  disabled={count === 0}
-                  onClick={() => setOnlyState((current) => (current === state ? null : state))}
-                >
-                  <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {LABEL[state]}
-                  <span className="legend-count">{count}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {onlyState !== null && (
-          <button type="button" className="legend-clear" onClick={() => setOnlyState(null)}>
-            显示全部 {report.rows.length} 行
-          </button>
+      {!empty && (
+          <div className="legend-bar">
+          <ul className="legend mcpm-legend hook-legend" aria-label="状态图例">
+            {(Object.keys(LABEL) as HookState[]).map((state) => {
+              const count = stateCounts.get(state) ?? 0;
+              return (
+                <li key={state}>
+                  <button
+                    type="button"
+                    className="legend-filter"
+                    aria-pressed={onlyState === state}
+                    title={count > 0 ? `只看${LABEL[state]}的事件` : `没有${LABEL[state]}的事件`}
+                    disabled={count === 0}
+                    onClick={() => setOnlyState((current) => (current === state ? null : state))}
+                  >
+                    <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {LABEL[state]}
+                    <span className="legend-count">{count}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {onlyState !== null && (
+            <button type="button" className="legend-clear" onClick={() => setOnlyState(null)}>
+              显示全部 {report.rows.length} 行
+            </button>
         )}
         {onlyState === null && attentionRows > 0 && (
           <span className="legend-hint">点图例可按状态筛选 · {attentionRows} 行需处理</span>
         )}
-      </div>
+        </div>
+      )}
 
       {form && (
         <HookForm
@@ -410,7 +412,7 @@ export function HooksView({ version, onChanged }: { version: number; onChanged: 
                 <th scope="col">event</th>
                 <th scope="col">源</th>
                 {report.agents.map((agent) => (
-                  <th scope="col" key={agent.key} title={agent.file}>
+                  <th scope="col" key={agent.key} className={`agent-${agent.key}`} title={agent.file}>
                     {agent.label}
                     <span className="count">{agent.format}</span>
                   </th>
@@ -430,7 +432,7 @@ export function HooksView({ version, onChanged }: { version: number; onChanged: 
                     const cell = row.cells[agent.key] ?? { state: (agent.supported ? 'none' : 'unsupported') as HookState };
                     const actions = cellActions(cell.state, row);
                     return (
-                      <td className={`mcpm-cell mcpm-${cell.state}`} key={agent.key}>
+                      <td className={`mcpm-cell mcpm-${cell.state} agent-${agent.key}`} key={agent.key}>
                         <span className="mcpm-state">{LABEL[cell.state]}</span>
                         {cell.summary && <span className="mcpm-summary" title={cell.summary}>{cell.summary}</span>}
                         {cell.error && <span className="mcpm-cell-error">{cell.error}</span>}

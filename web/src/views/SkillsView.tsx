@@ -44,6 +44,7 @@ const CONFIRM: Record<SkillActionKind, { title: string; confirm: string; danger:
   import: { title: '收进源并改链接', confirm: '收进源', danger: false },
   remove: { title: '删除这个副本', confirm: '删除副本', danger: true },
   unlink: { title: '移除失效链接', confirm: '移除链接', danger: true },
+  delete: { title: '删除 skill', confirm: '删除 skill', danger: true },
 };
 
 function pathOf(cell: Cell): string | undefined {
@@ -199,6 +200,86 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
     );
   }
   if (!matrix) return <p className="muted">扫描中…</p>;
+  const report = matrix;
+
+  /**
+   * Deleting from the source is the only removal that is not tied to one agent. The dialog
+   * separates what will really disappear from copies and external links, which stay on disk.
+   */
+  function requestDelete(row: Row) {
+    const links: Array<{ label: string; path: string }> = [];
+    const broken: Array<{ label: string; path: string }> = [];
+    const kept: Array<{ label: string; path: string; state: CellState }> = [];
+    for (const agent of report.agents) {
+      const cell = row.cells[agent.key];
+      if (!cell) continue;
+      const path = cell.path ?? joinPath(agent.root, row.name);
+      if (cell.state === 'linked') links.push({ label: agent.label, path });
+      else if (cell.state === 'broken') broken.push({ label: agent.label, path });
+      else if (cell.state === 'copy' || cell.state === 'orphan' || cell.state === 'external') {
+        kept.push({ label: agent.label, path, state: cell.state });
+      }
+    }
+
+    setNotice(null);
+    void ask({
+      title: `删除 skill ${row.name}`,
+      danger: true,
+      confirmLabel: '删除 skill',
+      message: (
+        <>
+          <p>
+            将从源目录删除 <code>{row.name}</code>：
+            <br />
+            <code>{joinPath(report.source.path, row.name)}</code>
+          </p>
+          {links.length > 0 && (
+            <p>
+              并移除指向它的链接：
+              <br />
+              {links.map((entry) => (
+                <span key={entry.path}>
+                  <code>{entry.path}</code>（{entry.label}）
+                  <br />
+                </span>
+              ))}
+            </p>
+          )}
+          {broken.length > 0 && (
+            <p className="muted">
+              失效链接：{broken.map((entry) => `${entry.label} ${entry.path}`).join('、')}
+              ；只有仍指向源的链接会被移除。
+            </p>
+          )}
+          {kept.length > 0 && (
+            <p className="muted">
+              保留：
+              {kept
+                .map(
+                  (entry) =>
+                    `${entry.label} ${entry.path}${entry.state === 'external' ? '（指向别处）' : '（独立副本）'}`,
+                )
+                .join('、')}
+              。要清理副本，请在该 agent 列使用「删除副本」。
+            </p>
+          )}
+          <p>写入前会建快照，可在快照面板整体还原。</p>
+        </>
+      ),
+      run: async () => {
+        setBusy(true);
+        setNotice(null);
+        try {
+          const result = await api.skill({ agent: 'source', action: 'delete', name: row.name });
+          setMatrix(result.matrix);
+          setNotice(result.message);
+          onChanged();
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  }
 
   const perAgent = (agentKey: string) =>
     matrix.rows.filter((row) => {
@@ -267,7 +348,7 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
                 <li key={agent.key}>
                   <button
                     type="button"
-                    className="legend-filter"
+                    className={`legend-filter agent-${agent.key}`}
                     aria-pressed={onlyAgent === agent.key}
                     title={attention > 0 ? `只看 ${agent.label} 里需处理的 skill` : `${agent.label} 没有需处理的 skill`}
                     disabled={attention === 0}
@@ -295,7 +376,11 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
               <tr>
                 <th scope="col">skill</th>
                 {matrix.agents.map((agent) => (
-                  <th key={agent.key} scope="col" className={agent.detected ? '' : 'undetected'}>
+                  <th
+                    key={agent.key}
+                    scope="col"
+                    className={`agent-${agent.key}${agent.detected ? '' : ' undetected'}`}
+                  >
                     {agent.label}
                     <span className="count">
                       {perAgent(agent.key)}{' '}
@@ -309,12 +394,27 @@ export function SkillsView({ version, onChanged }: { version: number; onChanged:
             <tbody>
               {visibleRows.map((row) => (
                 <tr key={row.name} className={row.inSource ? 'from-source' : 'outside-source'}>
-                  <th scope="row">{row.name}</th>
+                  <th scope="row">
+                    <span className="skill-name">{row.name}</span>
+                    {row.inSource && (
+                      <span className="skill-row-actions">
+                        <button
+                          type="button"
+                          className="skill-delete"
+                          disabled={busy}
+                          title={`从源目录删除 ${row.name}，并移除指向它的链接`}
+                          onClick={() => requestDelete(row)}
+                        >
+                          删除
+                        </button>
+                      </span>
+                    )}
+                  </th>
                   {matrix.agents.map((agent) => {
                     const cell = row.cells[agent.key] ?? { state: 'missing' as CellState };
                     const actions = actionsFor(cell, row);
                     return (
-                      <td key={agent.key} className={`cell state-${cell.state}`} title={title(cell)}>
+                      <td key={agent.key} className={`cell state-${cell.state} agent-${agent.key}`} title={title(cell)}>
                         <span className="cell-state">{SHORT[cell.state]}</span>
                         {cell.state === 'copy' && cell.hashMatch === false && (
                           <span className="drift" aria-hidden="true">

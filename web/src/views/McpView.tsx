@@ -484,36 +484,38 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
         </div>
       )}
 
-      <div className="legend-bar">
-        <ul className="legend mcpm-legend" aria-label="状态图例">
-          {(Object.keys(STATE_LABEL) as McpState[]).map((state) => {
-            const count = rowStates.map.get(state) ?? 0;
-            return (
-              <li key={state}>
-                <button
-                  type="button"
-                  className="legend-filter"
-                  aria-pressed={onlyState === state}
-                  title={count > 0 ? `只看${STATE_LABEL[state]}的 server` : `没有${STATE_LABEL[state]}的 server`}
-                  disabled={count === 0}
-                  onClick={() => setOnlyState((current) => (current === state ? null : state))}
-                >
-                  <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {STATE_LABEL[state]}
-                  <span className="legend-count">{count}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {onlyState !== null && (
-          <button type="button" className="legend-clear" onClick={() => setOnlyState(null)}>
-            显示全部 {report.rows.length} 行
-          </button>
+      {!empty && (
+          <div className="legend-bar">
+          <ul className="legend mcpm-legend" aria-label="状态图例">
+            {(Object.keys(STATE_LABEL) as McpState[]).map((state) => {
+              const count = rowStates.map.get(state) ?? 0;
+              return (
+                <li key={state}>
+                  <button
+                    type="button"
+                    className="legend-filter"
+                    aria-pressed={onlyState === state}
+                    title={count > 0 ? `只看${STATE_LABEL[state]}的 server` : `没有${STATE_LABEL[state]}的 server`}
+                    disabled={count === 0}
+                    onClick={() => setOnlyState((current) => (current === state ? null : state))}
+                  >
+                    <span className={`mcpm-dot mcpm-${state}`} aria-hidden="true" /> {STATE_LABEL[state]}
+                    <span className="legend-count">{count}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {onlyState !== null && (
+            <button type="button" className="legend-clear" onClick={() => setOnlyState(null)}>
+              显示全部 {report.rows.length} 行
+            </button>
         )}
         {onlyState === null && rowStates.attention > 0 && (
           <span className="legend-hint">点图例可按状态筛选 · {rowStates.attention} 行需处理</span>
         )}
-      </div>
+        </div>
+      )}
 
       {form && (
         <McpForm
@@ -543,7 +545,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
                 <th scope="col">server</th>
                 <th scope="col">源</th>
                 {report.agents.map((agent) => (
-                  <th key={agent.key} scope="col" title={agent.file}>
+                  <th key={agent.key} scope="col" className={`agent-${agent.key}`} title={agent.file}>
                     {agent.label}
                     <span className="count">{agent.format}</span>
                   </th>
@@ -563,7 +565,7 @@ export function McpView({ version, onChanged }: { version: number; onChanged: ()
                     const cell = row.cells[agent.key] ?? { state: 'missing' as McpState };
                     const actions = cellActions(cell, row);
                     return (
-                      <td key={agent.key} className={`mcpm-cell mcpm-${cell.state}`}>
+                      <td key={agent.key} className={`mcpm-cell mcpm-${cell.state} agent-${agent.key}`}>
                         <span className="mcpm-state">{STATE_LABEL[cell.state]}</span>
                         {cell.summary && (
                           <span className="mcpm-summary" title={cell.summary}>

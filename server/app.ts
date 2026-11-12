@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
-import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
+import { deleteSourceSkill, importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
 import { installBuiltinSkill, listBuiltinSkills } from './builtins.ts';
 import { cacheTargets, runCacheAction, scanCache } from './cache.ts';
 import { scanConfig } from './config.ts';
@@ -457,10 +457,19 @@ async function handleRequest(
   if (pathname === '/api/skills' && request.method === 'POST') {
     const body = (await readJson(request)) as unknown as SkillActionRequest;
     const kind = body.action;
-    if (kind !== 'link' && kind !== 'import' && kind !== 'remove' && kind !== 'unlink') {
+    if (kind !== 'link' && kind !== 'import' && kind !== 'remove' && kind !== 'unlink' && kind !== 'delete') {
       throw new AppError(400, `未知的 skills 动作：${String(kind)}`);
     }
     const payload = await writes.run(() => {
+      if (kind === 'delete') {
+        const action = deleteSourceSkill({
+          source: config.source,
+          agents: config.agents.map((agent) => ({ root: agent.root, label: agent.label })),
+          name: String(body.name),
+          snapshotRoot: config.snapshotRoot,
+        });
+        return { message: action.message, snapshotId: action.snapshotId, matrix: safeMatrix(config) };
+      }
       const agent = agentFor(config, String(body.agent));
       const input = {
         source: config.source,

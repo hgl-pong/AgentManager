@@ -103,6 +103,7 @@
 }
 
 .cache-bytes {
+  font-family: var(--font-mono);
   font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
 }
@@ -165,22 +166,10 @@
 
 .cache-agent::before {
   content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
   background: var(--agent-color, var(--text-dim));
-}
-
-.cache-agent.agent-claude {
-  --agent-color: var(--accent);
-}
-
-.cache-agent.agent-codex {
-  --agent-color: var(--success);
-}
-
-.cache-agent.agent-pi {
-  --agent-color: var(--warning);
 }
 
 .cache-page .cell-actions {

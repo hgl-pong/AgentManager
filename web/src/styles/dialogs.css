@@ -7,7 +7,7 @@
   max-height: min(84vh, 900px);
   padding: 0;
   overflow: hidden;
-  border: 0;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-xl);
   background: var(--surface);
   color: var(--text);
@@ -38,8 +38,8 @@
 .confirm-dialog h2 {
   flex: none;
   padding: 20px 24px 0;
-  font-size: var(--fs-lg);
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: var(--fw-semibold);
   line-height: var(--lh-snug);
 }
 
@@ -91,13 +91,13 @@
 }
 
 .confirm-dialog-actions .danger {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: var(--accent-contrast);
+  border-color: var(--danger-solid);
+  background: var(--danger-solid);
+  color: var(--danger-solid-text);
   font-weight: var(--fw-semibold);
 }
 
 .confirm-dialog-actions .danger:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 82%, var(--text));
+  border-color: var(--danger-solid);
+  background: color-mix(in srgb, var(--danger-solid) 84%, #000);
 }

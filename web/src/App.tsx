@@ -26,19 +26,7 @@ import { useConfirmDialog } from './lib/confirm.tsx';
 import { THEME_OPTIONS, applyTheme, loadTheme, rememberTheme } from './lib/theme.ts';
 import type { ThemeMode } from './lib/theme.ts';
 
-/** One small line-drawn glyph per tab; the sidebar reads as a list of places, not a list of words. */
-const ICONS = {
-  skills:
-    'M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z M12 12v9 M4 7.5 12 12l8-4.5',
-  store: 'M4.5 8h15l-1.2 11.4a2 2 0 0 1-2 1.8H7.7a2 2 0 0 1-2-1.8L4.5 8Z M9 8V6.5a3 3 0 0 1 6 0V8',
-  mcp: 'M4 6h16v5H4z M4 13h16v5H4z M7.5 8.5h.01 M7.5 15.5h.01',
-  hooks: 'M4 7h6a4 4 0 0 1 4 4v2a4 4 0 0 0 4 4h2 M16 13l3 4-3 4 M8 7 4 3 M8 7 4 11',
-  prompts: 'M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5',
-  settings:
-    'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2v.17a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-2.95-1.1l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1-1.83-1.2h-.17a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a2 2 0 0 1 1.2-1.83',
-  cache: 'M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
-} as const;
-
+/** The index numbers are the sidebar's address for each page; keep them stable. */
 const TABS = [
   {
     key: 'skills',
@@ -98,14 +86,6 @@ const NAV_GROUPS = [
   { label: '本机维护', keys: ['cache', 'settings'] },
 ] as const;
 
-function TabIcon({ name }: { name: keyof typeof ICONS }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={ICONS[name]} />
-    </svg>
-  );
-}
-
 type TabKey = (typeof TABS)[number]['key'];
 
 const PROMPT_STATE_SHORT: Record<PromptState, string> = {
@@ -124,6 +104,13 @@ interface AgentStatus {
   fileCount: number | null;
   existsCount: number;
   promptState: PromptState | null;
+}
+
+function agentTitle(agent: AgentStatus): string {
+  const files =
+    agent.fileCount === null ? '配置文件未知' : `${agent.existsCount}/${agent.fileCount} 个文件`;
+  const prompt = agent.promptState ? ` · ${PROMPT_STATE_SHORT[agent.promptState]}` : '';
+  return `${agent.label}：${agent.detected ? '已检测' : '未检测'} · ${files}${prompt}`;
 }
 
 function tabFromHash(): TabKey {
@@ -402,15 +389,12 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z" />
-              <path d="M12 12v9M12 12 4.5 7.2M12 12l7.5-4.8" />
-            </svg>
+          <span className="brand-seal" aria-hidden="true">
+            AM
           </span>
           <span className="brand-copy">
             <strong>AgentManager</strong>
-            <span>本地配置</span>
+            <span>本地 agent 配置索引</span>
           </span>
         </div>
 
@@ -435,15 +419,12 @@ export default function App() {
                       type="button"
                       role="tab"
                       id={`nav-${entry.key}`}
-                      title={count > 0 ? `${entry.title} · ${count} 项需处理` : entry.title}
+                      title={count > 0 ? `${entry.title} · ${count} 项需处理` : `${entry.group} · ${entry.title}`}
                       aria-selected={entry.key === tab}
                       aria-controls="workspace-panel"
                       className={entry.key === tab ? 'side-link is-active' : 'side-link'}
                       onClick={() => select(entry.key)}
                     >
-                      <span className="side-link-icon">
-                        <TabIcon name={entry.key} />
-                      </span>
                       <span className="side-link-label">{entry.label}</span>
                       {count > 0 && <span className="nav-badge">{count}</span>}
                     </button>
@@ -454,62 +435,36 @@ export default function App() {
           </div>
         </nav>
 
-        <section className="side-agents" aria-labelledby="side-agents-title">
-          <h2 id="side-agents-title">状态</h2>
-          <div className="side-summary">
-            <span>提示词 {promptSummary}</span>
-            <span>MCP {mcpSummary}</span>
-          </div>
-          <div
-            className={attentionTotal > 0 ? 'side-attention is-active' : 'side-attention'}
-            role="status"
-            aria-live="polite"
-          >
-            <span className="side-attention-label">需处理</span>
-            {metaErrors.length > 0 && !matrixReport && !configReport && !hooksReport ? (
-              <span className="side-attention-empty">读取中…</span>
-            ) : attentionTotal === 0 ? (
-              <span className="side-attention-empty">没有待处理的差异</span>
-            ) : (
-              <div className="side-attention-list">
-                {attention
-                  .filter((entry) => entry.count > 0)
-                  .map((entry) => (
-                    <button
-                      key={entry.key}
-                      type="button"
-                      className="link-button"
-                      title={`跳到${entry.label}页查看差异`}
-                      aria-label={`${entry.label}：${entry.count} 项需处理`}
-                      onClick={() => select(entry.key)}
-                    >
-                      {entry.label} {entry.count}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-          <ul>
-            {agents.map((agent) => (
-              <li key={agent.key} className="side-agent">
-                <span
-                  className={agent.detected ? 'status-dot is-on' : 'status-dot'}
-                  title={agent.detected ? '已检测到' : '未检测到'}
-                  aria-hidden="true"
-                />
-                <span className="side-agent-copy">
-                  <strong>{agent.label}</strong>
-                  <span>
-                    {agent.detected ? '已检测' : '未检测'}
-                    {agent.fileCount === null
-                      ? ' · 配置文件未知'
-                      : ` · ${agent.existsCount}/${agent.fileCount} 个文件`}
-                    {agent.promptState ? ` · ${PROMPT_STATE_SHORT[agent.promptState]}` : ''}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
+        <section
+          className={attentionTotal > 0 ? 'side-attention is-active' : 'side-attention'}
+          role="status"
+          aria-live="polite"
+          aria-label="需处理"
+        >
+          <span className="side-attention-label">需处理</span>
+          {metaErrors.length > 0 && !matrixReport && !configReport && !hooksReport ? (
+            <span className="side-attention-empty">读取中…</span>
+          ) : attentionTotal === 0 ? (
+            <span className="side-attention-empty">没有待处理的差异</span>
+          ) : (
+            <div className="side-attention-list">
+              {attention
+                .filter((entry) => entry.count > 0)
+                .map((entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    className="link-button"
+                    title={`跳到${entry.label}页查看差异`}
+                    aria-label={`${entry.label}：${entry.count} 项需处理`}
+                    onClick={() => select(entry.key)}
+                  >
+                    <span>{entry.label} </span>
+                    <span>{entry.count}</span>
+                  </button>
+                ))}
+            </div>
+          )}
           {metaErrors.length > 0 && (
             <p className="side-error" title={metaErrors.join('；')}>
               部分状态读取失败{' '}
@@ -519,16 +474,6 @@ export default function App() {
             </p>
           )}
         </section>
-
-        <footer className="side-foot">
-          <div className="side-version">
-            <span>{health ? `v${health.version}` : '版本未知'}</span>
-            <code>{health?.url ?? '本机服务'}</code>
-          </div>
-          <button type="button" className="secondary" onClick={() => void quit()} disabled={quitting}>
-            {quitting ? '停止中…' : '退出程序'}
-          </button>
-        </footer>
       </aside>
 
       <div className="app-main">
@@ -538,23 +483,9 @@ export default function App() {
             <p className="lede">{activeTab.lede}</p>
           </div>
           <div className="head-tools">
-            <div className="theme-switch" role="group" aria-label="主题">
-              {THEME_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={theme === option.value}
-                  title={option.title}
-                  className={theme === option.value ? 'is-active' : ''}
-                  onClick={() => chooseTheme(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
             <button
               type="button"
-              className={draftDirty ? 'secondary rescan' : 'primary rescan'}
+              className={draftDirty ? 'secondary rescan is-dirty' : 'secondary rescan'}
               onClick={() => void rescan()}
             >
               重新扫描
@@ -603,6 +534,47 @@ export default function App() {
           <SnapshotsPanel version={snapshotVersion} onRestored={restored} />
         </main>
       </div>
+
+      <footer className="status-bar" aria-label="运行状态">
+        <div className="status-agents">
+          {agents.map((agent) => (
+            <span
+              key={agent.key}
+              className={`status-agent agent-${agent.key}${agent.detected ? '' : ' is-off'}`}
+              title={agentTitle(agent)}
+            >
+              <span className="status-agent-dot" aria-hidden="true" />
+              <strong>{agent.label}</strong>
+            </span>
+          ))}
+        </div>
+        <div className="status-summary">
+          <span>提示词 {promptSummary}</span>
+          <span>MCP {mcpSummary}</span>
+        </div>
+        <div className="status-meta">
+          <div className="theme-switch" role="group" aria-label="主题">
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={theme === option.value}
+                title={option.title}
+                className={theme === option.value ? 'is-active' : ''}
+                onClick={() => chooseTheme(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <span className="status-version" title={health?.url ?? '本机服务'}>
+            {health ? `v${health.version}` : '版本未知'}
+          </span>
+          <button type="button" className="status-quit" onClick={() => void quit()} disabled={quitting}>
+            {quitting ? '停止中…' : '退出程序'}
+          </button>
+        </div>
+      </footer>
       {confirmNode}
     </div>
   );

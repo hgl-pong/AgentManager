@@ -60,7 +60,7 @@ export interface MatrixResponse extends Matrix {
 
 // ---- skills write actions ----
 
-export type SkillActionKind = 'link' | 'import' | 'remove' | 'unlink';
+export type SkillActionKind = 'link' | 'import' | 'remove' | 'unlink' | 'delete';
 
 export interface SkillActionRequest {
   agent: string;

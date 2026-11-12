@@ -1,85 +1,96 @@
 /* ==========================================================================
    AgentManager — design tokens
-   Plain local tool: neutral greys, thin rules, one restrained accent, small
-   square corners and no resting shadows. The sidebar shares the page plane in
-   both themes instead of acting as a separate dark panel. Colour is assigned
-   in exactly three places (light root, dark media query, dark attribute);
-   every other file references tokens.
+   "Ink & paper": warm paper planes, ink text, one stamp-red accent, serif
+   display titles and squared ledger geometry. Static surfaces stay flat;
+   only overlays lift. Colour is assigned in exactly three places (light root,
+   dark media query, dark attribute); every other file references tokens.
    ========================================================================== */
 
 :root {
   color-scheme: light;
 
   /* canvas & surfaces */
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --surface-2: #f7f8fa;
-  --surface-3: #eceef1;
-  --surface-sunken: #eef0f2;
+  --bg: #f3efe5;
+  --surface: #fbf8f1;
+  --surface-2: #eee9dd;
+  --surface-3: #e4decf;
+  --surface-sunken: #e9e3d6;
 
   /* rules */
-  --border: #dcdfe3;
-  --border-strong: #b9bec5;
+  --border: #d8d1c2;
+  --border-strong: #b7ad9b;
 
-  /* text (--text-dim is ≥5:1 on both --surface and --surface-2) */
-  --text: #191b1f;
-  --text-muted: #4b5158;
-  --text-dim: #6d747c;
+  /* text (--text-dim is ≥4.5:1 on both --surface and --surface-2) */
+  --text: #201d17;
+  --text-muted: #575145;
+  --text-dim: #6a6355;
 
-  /* accent */
-  --accent: #1f6feb;
-  --accent-strong: #175ac6;
-  --accent-contrast: #ffffff;
+  /* stamp red: attention, current position, links, focus */
+  --accent: #a3382a;
+  --accent-strong: #7d281e;
+  --accent-contrast: #fbf8f1;
 
-  /* the single filled action for a page */
-  --primary-bg: #1f6feb;
-  --primary-bg-hover: #1a60d0;
-  --primary-text: #ffffff;
+  /* the single filled action for a page: ink on paper */
+  --primary-bg: #26221b;
+  --primary-bg-hover: #3b342a;
+  --primary-text: #fbf8f1;
 
   /* semantics */
-  --danger: #b42318;
-  --danger-soft: #fdeceb;
-  --warning: #8a5a00;
-  --warning-soft: #fdf6e6;
-  --success: #1a7f45;
-  --success-soft: #eaf6ef;
-  --info: #1f6feb;
+  --danger: #8f2a1e;
+  --danger-soft: #f0ded8;
+  --danger-solid: #8f2a1e;
+  --danger-solid-text: #fbf8f1;
+  --warning: #875a06;
+  --warning-soft: #f3ead4;
+  --success: #3f6b4a;
+  --success-soft: #e6eee4;
+  --info: #3a5a7a;
 
-  /* sidebar: same plane as the page, separated by a rule */
-  --sidebar-bg: #f3f4f6;
-  --sidebar-raised: #ffffff;
-  --sidebar-border: #dcdfe3;
-  --sidebar-text: #191b1f;
-  --sidebar-muted: #4b5158;
-  --sidebar-dim: #6d747c;
-  --sidebar-active: #e5e8ec;
-  --sidebar-accent: #1f6feb;
+  /* agent identities: functional marks only, never washes */
+  --agent-claude: #a34f2c;
+  --agent-codex: #46663c;
+  --agent-pi: #44556e;
+
+  /* sidebar: the index page of the same ledger */
+  --sidebar-bg: #efeade;
+  --sidebar-raised: #fbf8f1;
+  --sidebar-border: #d8d1c2;
+  --sidebar-text: #201d17;
+  --sidebar-muted: #575145;
+  --sidebar-dim: #6a6355;
+  --sidebar-active: #fbf8f1;
+  --sidebar-accent: #a3382a;
 
   /* typography */
+  --font-serif: 'Cambria', 'Georgia', 'Songti SC', 'SimSun', 'Times New Roman', serif;
   --font-sans: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
     'PingFang SC', system-ui, sans-serif;
   --font-mono: 'Cascadia Mono', 'Cascadia Code', 'Consolas', 'Microsoft YaHei UI', ui-monospace,
     monospace;
 
-  --fs-2xs: 10px;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-base: 13px;
-  --fs-md: 13px;
-  --fs-lg: 15px;
-  --fs-xl: 19px;
-  --fs-2xl: 24px;
+  --fs-2xs: 10.5px;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15.5px;
+  --fs-xl: 20px;
+  --fs-2xl: 25px;
+  --fs-display: 28px;
+  --fs-heading: 16px;
 
-  --lh-tight: 1.2;
-  --lh-snug: 1.4;
-  --lh-normal: 1.55;
+  --lh-tight: 1.22;
+  --lh-snug: 1.45;
+  --lh-normal: 1.6;
 
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
 
-  --tracking-tight: -0.02em;
+  --tracking-tight: -0.01em;
 
   /* spacing, 4px base */
   --space-1: 4px;
@@ -94,26 +105,26 @@
   --space-10: 64px;
 
   /* radius */
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 6px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
   --radius-full: 999px;
 
   /* no resting shadows; only overlays lift */
-  --shadow-md: 0 4px 12px -8px rgba(20, 20, 15, 0.2);
-  --shadow-pop: 0 24px 60px -24px rgba(20, 20, 15, 0.35), 0 2px 8px rgba(20, 20, 15, 0.08);
+  --shadow-md: 0 6px 18px -14px rgba(44, 34, 18, 0.55);
+  --shadow-pop: 0 24px 64px -28px rgba(44, 34, 18, 0.55), 0 2px 6px rgba(44, 34, 18, 0.14);
 
-  --scrim: rgba(12, 12, 9, 0.45);
-  --ring: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+  --scrim: rgba(30, 24, 16, 0.48);
+  --ring: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 
   /* layout */
-  --sidebar-width: 244px;
-  --page-head-height: 56px;
+  --sidebar-width: 224px;
+  --statusbar-height: 30px;
   --content-max: 1400px;
   --gutter: clamp(16px, 2vw, 28px);
-  --row-height: 38px;
+  --row-height: 42px;
   --control-height: 32px;
 
   /* motion */
@@ -124,6 +135,7 @@
   /* layers */
   --z-sticky: 10;
   --z-sidebar: 20;
+  --z-status: 30;
   --z-popover: 40;
   --z-dialog: 60;
   --z-toast: 70;
@@ -133,94 +145,106 @@
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --bg: #101214;
-    --surface: #17191c;
-    --surface-2: #1e2125;
-    --surface-3: #262a2f;
-    --surface-sunken: #0c0e10;
+    --bg: #0d0b09;
+    --surface: #14110d;
+    --surface-2: #1b1712;
+    --surface-3: #242019;
+    --surface-sunken: #090806;
 
-    --border: #2b2f34;
-    --border-strong: #454b52;
+    --border: #332c23;
+    --border-strong: #554a3b;
 
-    --text: #e6e8eb;
-    --text-muted: #aeb4bb;
-    --text-dim: #858c94;
+    --text: #f3ecdf;
+    --text-muted: #c9bfae;
+    --text-dim: #aaa08e;
 
-    --accent: #6ea8fe;
-    --accent-strong: #9cc3ff;
-    --accent-contrast: #10141a;
+    --accent: #ea8d77;
+    --accent-strong: #f7ac97;
+    --accent-contrast: #1a1610;
 
-    --primary-bg: #2f6feb;
-    --primary-bg-hover: #4a84f0;
-    --primary-text: #ffffff;
+    --primary-bg: #e3d2b5;
+    --primary-bg-hover: #efdfc5;
+    --primary-text: #211c14;
 
-    --danger: #f07a72;
-    --danger-soft: #2b1715;
-    --warning: #dfb266;
-    --warning-soft: #282115;
-    --success: #6fcf97;
-    --success-soft: #12251a;
-    --info: #6ea8fe;
+    --danger: #f39a8a;
+    --danger-soft: #331a15;
+    --danger-solid: #b23d2f;
+    --danger-solid-text: #fbf8f1;
+    --warning: #e5b567;
+    --warning-soft: #2e2515;
+    --success: #a3d3a1;
+    --success-soft: #17261a;
+    --info: #abc4df;
 
-    --sidebar-bg: #141619;
-    --sidebar-raised: #1b1e22;
-    --sidebar-border: #2b2f34;
-    --sidebar-text: #e6e8eb;
-    --sidebar-muted: #aeb4bb;
-    --sidebar-dim: #858c94;
-    --sidebar-active: #23272c;
-    --sidebar-accent: #6ea8fe;
+    --agent-claude: #e09270;
+    --agent-codex: #a4c396;
+    --agent-pi: #9fb6d2;
 
-    --shadow-md: 0 4px 12px -8px rgba(0, 0, 0, 0.7);
-    --shadow-pop: 0 28px 70px -26px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.6);
+    --sidebar-bg: #0b0907;
+    --sidebar-raised: #14110d;
+    --sidebar-border: #332c23;
+    --sidebar-text: #f3ecdf;
+    --sidebar-muted: #c9bfae;
+    --sidebar-dim: #aaa08e;
+    --sidebar-active: #1e1a14;
+    --sidebar-accent: #ea8d77;
 
-    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-md: 0 6px 18px -14px rgba(0, 0, 0, 0.9);
+    --shadow-pop: 0 28px 70px -30px rgba(0, 0, 0, 0.9), 0 2px 8px rgba(0, 0, 0, 0.55);
+
+    --scrim: rgba(0, 0, 0, 0.72);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #101214;
-  --surface: #17191c;
-  --surface-2: #1e2125;
-  --surface-3: #262a2f;
-  --surface-sunken: #0c0e10;
+  --bg: #0d0b09;
+  --surface: #14110d;
+  --surface-2: #1b1712;
+  --surface-3: #242019;
+  --surface-sunken: #090806;
 
-  --border: #2b2f34;
-  --border-strong: #454b52;
+  --border: #332c23;
+  --border-strong: #554a3b;
 
-  --text: #e6e8eb;
-  --text-muted: #aeb4bb;
-  --text-dim: #858c94;
+  --text: #f3ecdf;
+  --text-muted: #c9bfae;
+  --text-dim: #aaa08e;
 
-  --accent: #6ea8fe;
-  --accent-strong: #9cc3ff;
-  --accent-contrast: #10141a;
+  --accent: #ea8d77;
+  --accent-strong: #f7ac97;
+  --accent-contrast: #1a1610;
 
-  --primary-bg: #2f6feb;
-  --primary-bg-hover: #4a84f0;
-  --primary-text: #ffffff;
+  --primary-bg: #e3d2b5;
+  --primary-bg-hover: #efdfc5;
+  --primary-text: #211c14;
 
-  --danger: #f07a72;
-  --danger-soft: #2b1715;
-  --warning: #dfb266;
-  --warning-soft: #282115;
-  --success: #6fcf97;
-  --success-soft: #12251a;
-  --info: #6ea8fe;
+  --danger: #f39a8a;
+  --danger-soft: #331a15;
+  --danger-solid: #b23d2f;
+  --danger-solid-text: #fbf8f1;
+  --warning: #e5b567;
+  --warning-soft: #2e2515;
+  --success: #a3d3a1;
+  --success-soft: #17261a;
+  --info: #abc4df;
 
-  --sidebar-bg: #141619;
-  --sidebar-raised: #1b1e22;
-  --sidebar-border: #2b2f34;
-  --sidebar-text: #e6e8eb;
-  --sidebar-muted: #aeb4bb;
-  --sidebar-dim: #858c94;
-  --sidebar-active: #23272c;
-  --sidebar-accent: #6ea8fe;
+  --agent-claude: #e09270;
+  --agent-codex: #a4c396;
+  --agent-pi: #9fb6d2;
 
-  --shadow-md: 0 4px 12px -8px rgba(0, 0, 0, 0.7);
-  --shadow-pop: 0 28px 70px -26px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.6);
+  --sidebar-bg: #0b0907;
+  --sidebar-raised: #14110d;
+  --sidebar-border: #332c23;
+  --sidebar-text: #f3ecdf;
+  --sidebar-muted: #c9bfae;
+  --sidebar-dim: #aaa08e;
+  --sidebar-active: #1e1a14;
+  --sidebar-accent: #ea8d77;
 
-  --scrim: rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 6px 18px -14px rgba(0, 0, 0, 0.9);
+  --shadow-pop: 0 28px 70px -30px rgba(0, 0, 0, 0.9), 0 2px 8px rgba(0, 0, 0, 0.55);
+
+  --scrim: rgba(0, 0, 0, 0.72);
 }

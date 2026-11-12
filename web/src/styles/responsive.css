@@ -4,11 +4,11 @@
 
 @media (max-width: 1180px) {
   .app-shell {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 210px minmax(0, 1fr);
   }
 
   .page-head {
-    padding: 12px var(--gutter);
+    padding: 16px var(--gutter) 13px;
   }
 
   .settings-body {
@@ -23,13 +23,14 @@
   }
 
   .app-shell {
-    grid-template-columns: 1fr;
+    display: block;
     height: auto;
     min-height: 100vh;
+    padding-bottom: var(--statusbar-height);
     overflow: visible;
   }
 
-  /* Sidebar folds into a top bar: brand and tabs on one line, status as a strip. */
+  /* The index folds into a top bar: brand and tabs on one line, attention below. */
   .sidebar {
     flex-direction: row;
     flex-wrap: wrap;
@@ -48,15 +49,19 @@
   .side-nav {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: visible;
+    overflow: hidden;
   }
 
   .nav-list {
     flex-direction: row;
+    flex-wrap: nowrap;
     gap: 2px;
     overflow-x: auto;
-    padding-bottom: 2px;
     scrollbar-width: none;
+  }
+
+  .nav-list::-webkit-scrollbar {
+    height: 0;
   }
 
   .nav-group {
@@ -73,42 +78,29 @@
 
   .side-link {
     width: auto;
-    height: 34px;
+    height: 32px;
     flex: none;
     padding: 0 10px;
   }
 
+  .sidebar .side-link.is-active,
+  .sidebar .side-link.is-active:hover:not(:disabled) {
+    box-shadow: inset 0 -2px 0 var(--sidebar-accent);
+  }
+
   .nav-badge {
-    margin-left: 0;
-  }
-
-  .side-agents {
-    flex-basis: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 14px;
-    margin-top: 0;
-    padding-top: 8px;
-    border-top: 1px solid var(--sidebar-border);
-  }
-
-  .side-agents h2 {
-    display: none;
-  }
-
-  .side-summary {
-    flex-direction: row;
-    gap: 10px;
-    padding: 0;
+    margin-left: 6px;
   }
 
   .side-attention {
     display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px 12px;
     margin: 0;
-    padding: 4px 8px;
+    padding: 6px 0 0;
+    border-top: 1px solid var(--sidebar-border);
   }
 
   .side-attention-label {
@@ -117,33 +109,14 @@
 
   .side-attention-list {
     flex-direction: row;
-    gap: 8px;
+    gap: 6px;
   }
 
   .side-attention button.link-button {
     width: auto;
     height: 24px;
-    padding: 0 4px;
-  }
-
-  .side-agents ul {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    padding: 0;
-  }
-
-  .side-agent {
-    align-items: center;
-  }
-
-  .status-dot {
-    margin-top: 0;
-  }
-
-  .side-agent-copy {
-    flex-direction: row;
     gap: 6px;
+    padding: 0 6px;
   }
 
   .side-error {
@@ -151,37 +124,27 @@
     padding: 0;
   }
 
-  .side-foot {
-    flex-basis: 100%;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 8px;
-  }
-
-  .side-foot button {
-    width: auto;
-  }
-
   .app-main {
+    height: auto;
     overflow: visible;
   }
 
   .page-head {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
     padding: 16px;
-  }
-
-  .head-tools {
-    margin-left: 0;
-    justify-content: space-between;
   }
 
   .workspace {
     overflow: visible;
-    padding: 16px 16px 56px;
+    padding: 16px 16px 48px;
+  }
+
+  .status-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-status);
+    height: var(--statusbar-height);
   }
 
   .settings-body {
@@ -194,26 +157,92 @@
 }
 
 @media (max-width: 680px) {
+  .page-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 6px 12px;
+    padding: 14px 16px 12px;
+  }
+
+  .page-title {
+    grid-column: 1;
+  }
+
   .page-head h1 {
-    font-size: var(--fs-lg);
+    font-size: 24px;
+  }
+
+  .lede {
+    -webkit-line-clamp: 2;
   }
 
   .head-tools {
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .theme-switch {
-    justify-content: center;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+    padding-top: 2px;
+    justify-content: flex-end;
   }
 
   .sidebar {
-    padding: 10px 12px;
-    gap: 8px 10px;
+    padding: 9px 12px;
+    gap: 6px 10px;
+  }
+
+  .side-nav {
+    overflow: visible;
+  }
+
+  .nav-list {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .brand-copy span {
+    display: none;
+  }
+
+  .side-link {
+    height: 30px;
+    padding: 0 6px;
+  }
+
+  .side-attention {
+    gap: 4px 10px;
   }
 
   .workspace {
-    padding: 14px 16px 56px;
+    padding: 14px 16px 44px;
+  }
+
+  .status-bar {
+    gap: 8px;
+    padding: 0 8px;
+    font-size: var(--fs-2xs);
+  }
+
+  .status-agents {
+    gap: 8px;
+  }
+
+  .status-agent strong {
+    font-size: var(--fs-2xs);
+  }
+
+  .status-summary,
+  .status-version {
+    display: none;
+  }
+
+  .status-meta {
+    gap: 4px;
+  }
+
+  .status-bar .theme-switch button,
+  .status-quit {
+    padding: 0 4px;
+    font-size: var(--fs-2xs);
   }
 
   .model-picker-panel {
@@ -223,51 +252,21 @@
   }
 
   .agent-switch {
-    flex-direction: column;
-    border-bottom: 0;
+    overflow-x: auto;
   }
 
   .agent-tab {
-    flex-basis: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    flex: 1 0 auto;
+    padding: 0 10px;
   }
 
-  .agent-tab.is-active {
-    border-color: var(--border-strong);
-    background: var(--surface);
+  .agent-tab .pkg-count {
+    display: none;
   }
 
   .settings-tools {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .brand-copy span {
-    display: none;
-  }
-
-  /* Keep the folded top bar to two rows on phones: drop the status detail,
-     keep the attention links and the quit action. */
-  .side-agents {
-    flex-basis: auto;
-    padding-top: 0;
-    border-top: 0;
-  }
-
-  .side-summary,
-  .side-agents ul {
-    display: none;
-  }
-
-  .side-foot {
-    flex-basis: auto;
-    margin-left: auto;
-    padding-top: 0;
-  }
-
-  .side-foot .side-version code {
-    display: none;
   }
 
   .form-grid,
@@ -321,7 +320,7 @@
   .toast {
     left: 16px;
     right: 16px;
-    bottom: 104px;
+    bottom: 44px;
     max-width: none;
   }
 

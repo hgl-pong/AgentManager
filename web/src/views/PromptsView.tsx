@@ -399,7 +399,7 @@ export function PromptsView({
           </header>
           {report.targets.length === 0 && <p className="muted">没有配置任何 agent 的提示词目标。</p>}
           {report.targets.map((target) => (
-            <article className="card" key={target.key}>
+            <article className={`card agent-${target.key}`} key={target.key}>
               <header>
                 <h2>{target.label}</h2>
                 <span className={`badge state-${target.state}`}>{STATE_LABEL[target.state]}</span>

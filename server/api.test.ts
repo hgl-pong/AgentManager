@@ -341,6 +341,37 @@ test('remove drops a copy and the snapshot restores it', async () => {
   assert.equal(readFileSync(join(home, '.claude', 'skills', 'stale', 'SKILL.md'), 'utf8'), 'stale-v1');
 });
 
+test('delete removes a source skill and its links while keeping copies', async () => {
+  writeSkill(join(home, '.agents', 'skills', 'disposable'), 'disposable-v1');
+  await call('/api/skills', { agent: 'claude', action: 'link', name: 'disposable' });
+  writeSkill(join(home, '.codex', 'skills', 'disposable'), 'copy-v1');
+
+  const result = await call<{ message: string; snapshotId: string; matrix: MatrixResponse }>('/api/skills', {
+    agent: 'source',
+    action: 'delete',
+    name: 'disposable',
+  });
+
+  assert.match(result.message, /移除 1 个链接/);
+  assert.equal(existsSync(join(home, '.agents', 'skills', 'disposable')), false);
+  assert.equal(existsSync(join(home, '.claude', 'skills', 'disposable')), false);
+  assert.equal(readFileSync(join(home, '.codex', 'skills', 'disposable', 'SKILL.md'), 'utf8'), 'copy-v1');
+  const row = result.matrix.rows.find((entry) => entry.name === 'disposable');
+  assert.equal(row?.inSource, false);
+  assert.equal(row?.cells.codex?.state, 'orphan');
+
+  await call('/api/snapshots/restore', { id: result.snapshotId });
+  assert.equal(
+    readFileSync(join(home, '.agents', 'skills', 'disposable', 'SKILL.md'), 'utf8'),
+    'disposable-v1',
+  );
+  assert.equal(
+    realpathSync(join(home, '.claude', 'skills', 'disposable')),
+    realpathSync(join(home, '.agents', 'skills', 'disposable')),
+  );
+  assert.equal(readFileSync(join(home, '.codex', 'skills', 'disposable', 'SKILL.md'), 'utf8'), 'copy-v1');
+});
+
 test('actions reject unknown agents and unsafe names', async () => {
   await assert.rejects(() => call('/api/skills', { agent: 'nope', action: 'link', name: 'alpha' }), /未知的 agent/);
   await assert.rejects(() => call('/api/skills', { agent: 'claude', action: 'link', name: '../escape' }), /路径分隔符/);

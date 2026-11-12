@@ -473,105 +473,127 @@ export function StoreView({
 
   return (
     <section className="store-page" ref={topRef}>
-      <div className="store-head">
-        <form className="store-search" role="search" onSubmit={search}>
-          <div className="store-kinds" role="group" aria-label="Skills / MCP">
-            <button
-              type="button"
-              aria-pressed={kind === 'skill'}
-              className={kind === 'skill' ? 'is-active' : ''}
-              onClick={() => chooseKind('skill')}
-            >
-              {t('kindSkill')}
-            </button>
-            <button
-              type="button"
-              aria-pressed={kind === 'mcp'}
-              className={kind === 'mcp' ? 'is-active' : ''}
-              onClick={() => chooseKind('mcp')}
-            >
-              {t('kindMcp')}
-            </button>
-          </div>
-          <input
-            className="control"
-            type="search"
-            value={query}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <button type="submit" className="primary" disabled={loading || tooShort}>
-            {loading ? t('searching') : t('search')}
-          </button>
-          <button type="button" onClick={showFeatured} disabled={loading && submitted === ''}>
-            {t('featured')}
-          </button>
-        </form>
-
-        <div className="store-targets" role="group" aria-label={t('linkTargets')}>
-          <span className="store-targets-label">{t('linkTargets')}</span>
-          {agents.map((agent) => (
-            <label className="check" key={agent.key}>
-              <input
-                type="checkbox"
-                checked={selected.includes(agent.key)}
-                disabled={!agent.detected}
-                onChange={(event) => toggleTarget(agent.key, event.target.checked)}
-              />
-              {agent.label}
-              {!agent.detected && <span className="tag">{t('noAgentDetected')}</span>}
-            </label>
-          ))}
-          {detected.length === 0 && <span className="hint">{t('noAgents')}</span>}
-          <div className="store-lang" role="group" aria-label={t('language')}>
-            {STORE_LANGS.map((option) => (
+      <div className="store-layout">
+        <aside className="store-rail" aria-label={t('catalog')}>
+          <div className="store-rail-block">
+            <span className="store-rail-label">{t('catalog')}</span>
+            <div className="store-kinds" role="group" aria-label={t('catalog')}>
               <button
-                key={option}
                 type="button"
-                aria-pressed={lang === option}
-                className={lang === option ? 'is-active' : ''}
-                onClick={() => chooseLang(option)}
+                aria-pressed={kind === 'skill'}
+                className={kind === 'skill' ? 'is-active' : ''}
+                onClick={() => chooseKind('skill')}
               >
-                {langLabel(lang, option)}
+                {t('kindSkill')}
               </button>
-            ))}
+              <button
+                type="button"
+                aria-pressed={kind === 'mcp'}
+                className={kind === 'mcp' ? 'is-active' : ''}
+                onClick={() => chooseKind('mcp')}
+              >
+                {t('kindMcp')}
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {tooShort && <p className="hint">{t('mcpMinChars')}</p>}
+          <div className="store-rail-block">
+            <div className="store-targets" role="group" aria-label={t('linkTargets')}>
+              <span className="store-targets-label">{t('linkTargets')}</span>
+              {agents.map((agent) => (
+                <label className={`check agent-${agent.key}`} key={agent.key}>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(agent.key)}
+                    disabled={!agent.detected}
+                    onChange={(event) => toggleTarget(agent.key, event.target.checked)}
+                  />
+                  {agent.label}
+                  {!agent.detected && <span className="tag">{t('noAgentDetected')}</span>}
+                </label>
+              ))}
+              {detected.length === 0 && <span className="hint">{t('noAgents')}</span>}
+            </div>
+          </div>
 
-      <div className="toolbar">
-        <p className="meta">
-          {report ? (
-            <>
-              {report.provider} · <code>{report.endpoint}</code> ·{' '}
-              {report.listing === 'featured' ? t('listingFeatured') : `${t('listingSearch')}「${report.query}」`} ·{' '}
-              {report.total > report.items.length
-                ? `${report.items.length}/${formatCount(report.total)}`
-                : formatCount(report.items.length)}{' '}
-              {t('results')} · {formatDate(report.fetchedAt)}
-              {report.cached ? ` · ${t('cached')}` : ''}
-            </>
-          ) : (
-            t('loading')
-          )}
-        </p>
-        <p className="hint">
-          {kind === 'mcp' ? (
-            <>
-              {t('mcpInstallNote')}
-              <code>{report?.sourcePath ?? '~/.agents/mcp/servers.json'}</code> · {t('mcpInstallNoteTail')}
-            </>
-          ) : (
-            <>
-              {t('installNote')}
-              <code>{report?.sourcePath ?? '~/.agents/skills'}</code> · {t('installNoteTail')}
-            </>
-          )}
-        </p>
-      </div>
+          <div className="store-rail-block">
+            <span className="store-rail-label">{t('language')}</span>
+            <div className="store-lang" role="group" aria-label={t('language')}>
+              {STORE_LANGS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={lang === option}
+                  className={lang === option ? 'is-active' : ''}
+                  onClick={() => chooseLang(option)}
+                >
+                  {langLabel(lang, option)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="store-rail-block store-source">
+            <span className="store-rail-label">{t('sourceLabel')}</span>
+            <strong>{report?.provider ?? '…'}</strong>
+            <code title={report?.endpoint}>{report?.endpoint ?? '…'}</code>
+          </div>
+        </aside>
+
+        <div className="store-main">
+          <div className="store-head">
+            <form className="store-search" role="search" onSubmit={search}>
+              <input
+                className="control"
+                type="search"
+                value={query}
+                placeholder={placeholder}
+                aria-label={placeholder}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <button type="submit" className="primary" disabled={loading || tooShort}>
+                {loading ? t('searching') : t('search')}
+              </button>
+              <button type="button" onClick={showFeatured} disabled={loading && submitted === ''}>
+                {t('featured')}
+              </button>
+            </form>
+          </div>
+
+          {tooShort && <p className="hint">{t('mcpMinChars')}</p>}
+
+          <div className="toolbar">
+            <p className="meta">
+              {report ? (
+                <>
+                  {report.listing === 'featured'
+                    ? t('listingFeatured')
+                    : `${t('listingSearch')}「${report.query}」`}{' '}
+                  ·{' '}
+                  {report.total > report.items.length
+                    ? `${report.items.length}/${formatCount(report.total)}`
+                    : formatCount(report.items.length)}{' '}
+                  {t('results')} · {formatDate(report.fetchedAt)}
+                  {report.cached ? ` · ${t('cached')}` : ''}
+                </>
+              ) : (
+                t('loading')
+              )}
+            </p>
+            <p className="hint">
+              {kind === 'mcp' ? (
+                <>
+                  {t('mcpInstallNote')}
+                  <code>{report?.sourcePath ?? '~/.agents/mcp/servers.json'}</code> · {t('mcpInstallNoteTail')}
+                </>
+              ) : (
+                <>
+                  {t('installNote')}
+                  <code>{report?.sourcePath ?? '~/.agents/skills'}</code> · {t('installNoteTail')}
+                </>
+              )}
+            </p>
+          </div>
 
       {report?.error && (
         <p className="warning">
@@ -793,6 +815,8 @@ export function StoreView({
           </button>
         </nav>
       )}
+        </div>
+      </div>
     </section>
   );
 }

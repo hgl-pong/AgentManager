@@ -36,6 +36,7 @@ figure {
 h1,
 h2,
 h3 {
+  font-family: var(--font-display);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: var(--lh-tight);
@@ -52,8 +53,15 @@ a {
   color: var(--accent);
 }
 
+input,
+select,
+textarea,
+button {
+  accent-color: var(--accent);
+}
+
 ::selection {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 :focus-visible {
@@ -85,6 +93,20 @@ a {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ---------- agent identity marks ---------- */
+
+.agent-claude {
+  --agent-color: var(--agent-claude);
+}
+
+.agent-codex {
+  --agent-color: var(--agent-codex);
+}
+
+.agent-pi {
+  --agent-color: var(--agent-pi);
 }
 
 /* ---------- text utilities ---------- */

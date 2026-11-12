@@ -60,6 +60,8 @@ export const STORE_TEXT = {
   searching: { zh: '搜索中…', en: 'Searching…' },
   featured: { zh: '热门', en: 'Featured' },
   language: { zh: '语言', en: 'Language' },
+  catalog: { zh: '目录', en: 'Catalog' },
+  sourceLabel: { zh: '来源', en: 'Source' },
   langZh: { zh: '中文', en: '中文' },
   langEn: { zh: 'English', en: 'English' },
   langBoth: { zh: '双语', en: 'Bilingual' },

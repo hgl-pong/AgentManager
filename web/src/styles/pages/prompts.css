@@ -35,15 +35,15 @@
 
 .prompt-editor {
   width: 100%;
-  min-height: 400px;
-  padding: 12px 14px;
+  min-height: 380px;
+  padding: 16px 18px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-base);
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.75;
   resize: vertical;
   transition: border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
@@ -94,7 +94,7 @@
 }
 
 .prompt-targets-head h2 {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-heading);
   font-weight: var(--fw-semibold);
 }
 
@@ -116,9 +116,21 @@
 }
 
 .prompt-targets > .card h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  font-family: var(--font-sans);
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
+}
+
+.prompt-targets > .card h2::before {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--agent-color, var(--text-dim));
+  content: '';
 }
 
 .prompt-targets > .card .badge {

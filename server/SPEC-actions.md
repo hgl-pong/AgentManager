@@ -2,13 +2,13 @@
 id: module-actions
 type: module-design
 status: active
-title: skills 写操作：建链、导入孤儿、移除副本
+title: skills 写操作：建链、导入孤儿、移除副本、删除源
 parent: architecture
 ---
 
 ## Responsibility
 
-`server/actions.ts` 是唯一会改动 `~/.agents/skills` 与各 agent skills 目录的模块。三个动作，每个都先建快照，再动文件。
+`server/actions.ts` 是唯一会改动 `~/.agents/skills` 与各 agent skills 目录的模块。每个动作都先建快照，再动文件。
 
 ## Boundary
 
@@ -18,13 +18,15 @@ parent: architecture
 | `import` | 目标位置是独立目录且含 SKILL.md；源里没有同名 skill | 目录移入源，目标位置变成指向源的 junction | `entries: [原目录]`、`created: [源里的新目录]` |
 | `remove` | 目标位置是独立目录（不是链接） | 目录被删除（内容留在快照里） | `entries: [原目录]` |
 | `unlink` | 目标位置是链接（通常是悬空 junction） | 链接被移除 | `entries: [原链接]` |
+| `delete` | 源里有该 skill | 源目录被删除；指向它的链接一并移除 | `entries: [源目录, 指向源的链接]` |
 
 - **不覆盖**：目标位置已有任何东西（含悬空链接）时 `link` 直接报错，由人来决定是副本、链接还是坏链。
 - **坏链出口**：扫描会把悬空链接标成 `broken`，但 `link` 不能覆盖它、`remove` 又拒绝链接，所以单独给一个只删链接的 `unlink`。删完后若源里有同名 skill，界面会回到 `missing` 并出现「建链」。
+- **删除源**：只删源里的这一份和确实指向它的链接；同名独立副本、指向别处的链接一律保留，确认框逐项列出，因为删除源条目不等于删除用户在 agent 里另存的内容。还原快照会重建源与链接。
 - **移动**：同盘用 `rename`，跨盘（EXDEV）退化为复制后删除。复制失败会删掉半成品目标；删除源失败会删掉刚复制出的目标；随后建链失败会把目录搬回原位置，保证 agent 目录里的内容不会凭空消失。
 - **边界校验**：skill 名不得含路径分隔符，最终路径必须落在给定根目录内；这是防止路径穿越的唯一关卡，因为请求体来自浏览器。校验失败 400，源/目标不存在 404，状态冲突（已存在、是链接、不是链接）409。
 - **失败标记**：快照之后抛错时给快照 `operation` 加 `[失败] ` 前缀，保留现场。
-- **不做**：批量操作、把副本替换成链接、编辑 skill 内容。
+- **不做**：批量操作、把副本替换成链接、编辑 skill 内容、删除指向别处的链接。
 
 ## 为什么这样切
 
