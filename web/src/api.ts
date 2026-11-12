@@ -14,13 +14,17 @@ import type {
   McpActionRequest,
   McpActionResponse,
   McpMatrixReport,
-  ModelsReport,
   OpenResponse,
   PromptActionReport,
   PromptActionRequest,
   PromptsReport,
   PromptSaveReport,
   PromptSourceContent,
+  ProviderActionRequest,
+  ProviderModelsReport,
+  ProviderMutationResponse,
+  ProviderSaveRequest,
+  ProvidersReport,
   RestoreResponse,
   SettingsCatalog,
   SettingsReport,
@@ -149,11 +153,15 @@ export const api = {
   settings: (signal?: AbortSignal) => request<SettingsReport>('/api/settings', { signal }),
   saveSettings: (body: SettingsSaveRequest) =>
     request<SettingsSaveResult>('/api/settings/save', post(body)),
-  models: (refresh = false, signal?: AbortSignal, url?: string) => {
-    const params = new URLSearchParams();
-    if (refresh) params.set('refresh', '1');
-    if (url && url.trim() !== '') params.set('url', url.trim());
-    const qs = params.toString();
-    return request<ModelsReport>(`/api/models${qs ? `?${qs}` : ''}`, { signal });
+  providers: (signal?: AbortSignal) => request<ProvidersReport>('/api/providers', { signal }),
+  saveProvider: (body: ProviderSaveRequest) =>
+    request<ProviderMutationResponse>('/api/providers/save', post(body)),
+  activateProvider: (body: ProviderActionRequest) =>
+    request<ProviderMutationResponse>('/api/providers/activate', post(body)),
+  removeProvider: (body: ProviderActionRequest) =>
+    request<ProviderMutationResponse>('/api/providers/remove', post(body)),
+  providerModels: (refresh = false, signal?: AbortSignal) => {
+    const qs = refresh ? '?refresh=1' : '';
+    return request<ProviderModelsReport>(`/api/providers/models${qs}`, { signal });
   },
 };

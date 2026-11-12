@@ -171,7 +171,6 @@ const server = spawn(process.execPath, ['server/index.ts', '--data', join(root, 
   env: {
     ...process.env,
     AGENT_MANAGER_HOME: home,
-    AGENT_MANAGER_MODELS_URL: `http://127.0.0.1:${MODELS_PORT}/v1`,
     AGENT_MANAGER_STORE_URL: `http://127.0.0.1:${STORE_PORT}`,
   },
   stdio: 'ignore',
@@ -413,27 +412,83 @@ try {
   await page.waitForFn(`location.hash === '#skills' && document.querySelector('table')`);
   check('confirming the modal switches tab', true);
 
+  // 4b. Provider: save base URL + API key and read the models from that provider.
+  await page.eval(`document.querySelector('#nav-provider').click(); return true;`);
+  await page.waitForFn(`document.querySelector('.provider-page')`);
+  await page.waitForFn(`document.querySelector('.provider-form')`);
+  await page.eval(`
+    const base = document.querySelector('.provider-field input[type=url]');
+    const key = document.querySelector('.provider-field input[type=password]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(base, 'http://127.0.0.1:${MODELS_PORT}/v1');
+    base.dispatchEvent(new Event('input', { bubbles: true }));
+    setter.call(key, 'test-provider-key');
+    key.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('.provider-form').requestSubmit();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelectorAll('.model-catalog-row').length === 3`);
+  const providerShape = await page.eval(`return {
+    items: document.querySelectorAll('.provider-item').length,
+    active: document.querySelector('.provider-item.is-active .provider-item-host')?.textContent ?? '',
+    models: document.querySelectorAll('.model-catalog-row').length,
+    keyField: document.querySelector('.provider-field input[type=password]')?.value ?? '',
+    bodyHasKey: document.body.innerText.includes('test-provider-key'),
+  };`);
+  check(
+    'provider saves base URL + key and shows the fetched models',
+    providerShape.items === 1 && providerShape.active.includes('127.0.0.1') && providerShape.models === 3,
+    JSON.stringify(providerShape),
+  );
+  check(
+    'the saved API key is not echoed back to the page',
+    providerShape.keyField === '' && !providerShape.bodyHasKey,
+    JSON.stringify(providerShape),
+  );
+
+  // A provider form is a draft too; changing a field must guard a tab switch.
+  await page.eval(`
+    const base = document.querySelector('.provider-field input[type=url]');
+    window.__providerBase = base.value;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(base, base.value + '/changed');
+    base.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.rescan.is-dirty')`);
+  await page.eval(`document.querySelector('#nav-skills').click(); return true;`);
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const providerGuard = await page.eval(`return document.querySelector('dialog.confirm-dialog').innerText;`);
+  check('a changed provider form guards tab switches', providerGuard.includes('Provider'), providerGuard.replace(/\s+/g, ' ').trim());
+  await page.eval(`document.querySelector('dialog.confirm-dialog').dispatchEvent(new Event('cancel', {cancelable:true})); return true;`);
+  await sleep(100);
+  const providerKept = await page.eval(`return {hash: location.hash, value: document.querySelector('.provider-field input[type=url]')?.value ?? ''};`);
+  check(
+    'cancelling the provider guard keeps the draft',
+    providerKept.hash === '#provider' && providerKept.value.endsWith('/changed'),
+    JSON.stringify(providerKept),
+  );
+  await page.eval(`
+    const base = document.querySelector('.provider-field input[type=url]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(base, window.__providerBase);
+    base.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  `);
+  await sleep(100);
+
   // 5. Settings: Ctrl+S while a confirm dialog is open must not start a save behind it.
   await page.eval(`document.querySelector('#nav-settings').click(); return true;`);
   await page.waitForFn(`document.querySelector('.models-panel, .settings-page')`);
   const settingsShape = await page.eval(`
     return {
       agentTabs: document.querySelectorAll('.agent-tab').length,
-      hasSearch: Boolean(document.querySelector('.models-catalog-search')) || true,
     };
   `);
   check('settings view renders agent tabs', settingsShape.agentTabs >= 3, JSON.stringify(settingsShape));
 
-  // 6. Model picker: open, filter, keyboard-select.
-  await page.eval(`
-    const modelsTab = [...document.querySelectorAll('.settings-nav .nav-item')].find(
-      (b) => b.firstChild.textContent.trim() === '模型',
-    );
-    if (!modelsTab) throw new Error('模型 nav item not found');
-    modelsTab.click();
-    return true;
-  `);
-  await page.waitForFn(`document.querySelector('.models-panel')`);
+  // 6. Model picker: the common form's model field uses the active provider list.
+  await page.waitForFn(`document.querySelector('.model-picker-trigger')`);
   const hasPicker = await page.eval(`return Boolean(document.querySelector('.model-picker-trigger'));`);
   if (hasPicker) {
     await page.eval(`document.querySelector('.model-picker-trigger').click(); return true;`);
@@ -520,14 +575,7 @@ try {
   const savedFree = await page.eval(`return window.__saveCalls;`);
   check('ctrl+s saves settings when no dialog is open', savedFree >= 1, `save requests=${savedFree}`);
 
-  // Dirty the draft again, open the navigation guard, then press Ctrl+S.
-  await page.eval(`
-    const modelsTab = [...document.querySelectorAll('.settings-nav .nav-item')].find(
-      (b) => b.firstChild.textContent.trim() === '模型',
-    );
-    modelsTab.click();
-    return true;
-  `);
+  // Dirty the draft again through the same model field, then press Ctrl+S behind a guard.
   await page.waitForFn(`document.querySelector('.model-picker-trigger')`);
   await page.eval(`
     const trigger = document.querySelector('.model-picker-trigger');

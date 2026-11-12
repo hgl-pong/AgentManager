@@ -1204,3 +1204,14 @@ UX 走查后的第一批修正，不涉及后端与协议：
 - **设置是文件页**：agent 页签下方新增文件状态条，每一行写清「agent · 文件角色、路径、字节数 / 解析失败」；左索引去掉外框，改成右侧细线分隔的索引，MCP servers 与原始文件之前加分隔线；搜索与「显示未设置项」改成一条粘性筛选线，不再套卡片。
 - **双列字段**：每个字段变成「字段名 / 状态 / 清除」左列 +「控件 + 说明」右列，嵌套对象沿用同一语言；≤760px 回到单列。面板去掉卡片边框，用区块标题的强线分隔；面板头的文件路径改用 `compactPath`，完整路径留在 title 里。
 - **验证**：`npm run typecheck`、`npm test`（206/206）、`npm run verify:ui`（80/80）、`npm run shots`（明暗与 390px）通过；`ui-check.mjs` 的模型选择器增加等待端点模型的断言，避免面板先挂载、列表后到达的时序抖动。
+
+## 附录 I：模型 Provider（2026-11-12）
+
+把模型来源从设置页里的「本地端点 + URL 输入」改成独立的 provider 选择。
+
+- **Provider 页**：主导航「单一源」下新增 Provider。左侧是 provider 列表（host、base URL、当前/切换），右侧是 base URL + API key 表单与模型清单。新增 provider 只要求这两项；保存后自动成为 active 并读取 `<base URL>/models`。
+- **密钥边界**：provider 文件是 `~/.agents/providers.json`，key 只在服务端请求模型时使用；`GET /api/providers` 只返回 `hasApiKey`，页面不回显已保存的 key，编辑时留空表示保留。写入走写队列并先建快照。
+- **模型**：Provider 页显示 active provider 的模型清单（ID/名称、分组、上下文、输出、推理强度、能力），支持筛选、刷新、缓存/失败状态；模型缓存身份是 provider id + updatedAt，修改 key 或 URL 后自动失效。
+- **设置页**：删除「模型」导航项、per-agent 模型卡片、模型源输入与模型清单；agent 的 model 字段继续存在，候选来自 active provider。设置页挂载或重新扫描时重新读取 provider 模型。
+- **兼容清理**：移除 `GET /api/models` 旧路由和 `api.models` 客户端方法；`server/models.ts` 保留为纯读取/归一化模块，供 provider 使用。`AGENT_MANAGER_MODELS_URL` 不再参与页面行为。
+- **测试**：`server/providers.test.ts` 覆盖保存/激活/删除、key 不回传、Bearer 请求、空 provider、损坏文件与快照还原；`ui-check.mjs` 增加从零创建 provider、读取 3 个模型、key 不回显的检查，并把模型选择器测试改为使用设置页「常用」里的 model 字段。`npm test` 213/213、`verify:ui` 84/84（含 provider 表单的未保存切换确认）、`shots` 增加 Provider 明暗与手机截图。

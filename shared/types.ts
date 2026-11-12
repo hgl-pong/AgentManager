@@ -368,6 +368,49 @@ export interface ModelsReport {
   models: ModelInfo[];
 }
 
+// ---- model providers ----
+
+/** A saved provider as the browser sees it: the API key never leaves the server. */
+export interface ProviderSummary {
+  id: string;
+  baseUrl: string;
+  /** Display identity derived from the base URL; no extra name field is required. */
+  host: string;
+  hasApiKey: boolean;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface ProvidersReport {
+  /** File that stores the providers; useful for diagnostics, not for display of secrets. */
+  source: string;
+  activeId: string | null;
+  providers: ProviderSummary[];
+}
+
+export interface ProviderSaveRequest {
+  /** Absent for a new provider. */
+  id?: string;
+  baseUrl: string;
+  /** Empty on update keeps the saved key; required when creating. */
+  apiKey?: string;
+}
+
+export interface ProviderActionRequest {
+  id: string;
+}
+
+export interface ProviderMutationResponse {
+  message: string;
+  snapshotId: string;
+  report: ProvidersReport;
+}
+
+export interface ProviderModelsReport extends ModelsReport {
+  /** The provider that supplied the list; null when no provider is configured. */
+  provider: ProviderSummary | null;
+}
+
 // ---- MCP management ----
 
 export type McpTransport = 'stdio' | 'http' | 'sse';

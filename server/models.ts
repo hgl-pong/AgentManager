@@ -2,12 +2,12 @@ import type { ModelInfo, ModelsReport } from '../shared/types.ts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:15721/v1';
 const CACHE_TTL_MS = 60_000;
-const FETCH_TIMEOUT_MS = 5_000;
+const FETCH_TIMEOUT_MS = 10_000;
 
 export type { ModelInfo, ModelsReport } from '../shared/types.ts';
 
 interface CacheEntry {
-  url: string;
+  key: string;
   fetchedAt: number;
   report: ModelsReport;
 }
@@ -171,6 +171,10 @@ export interface ModelsInput {
   source?: string;
   modelsUrl?: string;
   endpoint?: string;
+  /** Bearer token sent only to the model endpoint; never included in the report. */
+  apiKey?: string;
+  /** Cache identity; lets a provider invalidate by id/update time instead of by URL alone. */
+  cacheKey?: string;
 }
 
 /**
@@ -197,16 +201,20 @@ export async function getModelsReport(input: ModelsInput = {}): Promise<ModelsRe
     };
   }
 
+  const key = input.cacheKey ?? url;
   const now = input.now?.() ?? Date.now();
-  if (!input.refresh && cache && cache.url === url && now - cache.fetchedAt < CACHE_TTL_MS) {
+  if (!input.refresh && cache && cache.key === key && now - cache.fetchedAt < CACHE_TTL_MS) {
     return { ...cache.report, cached: true };
   }
 
   const fetchedAt = new Date(now).toISOString();
   try {
     const fetchImpl = input.fetchImpl ?? fetch;
+    const headers: Record<string, string> = { accept: 'application/json' };
+    const apiKey = input.apiKey?.trim();
+    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
     const response = await fetchImpl(url, {
-      headers: { accept: 'application/json' },
+      headers,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`模型源返回 HTTP ${response.status}`);
@@ -216,11 +224,11 @@ export async function getModelsReport(input: ModelsInput = {}): Promise<ModelsRe
       cached: false,
       models: normalizeModels(await response.json()),
     };
-    cache = { url, fetchedAt: now, report };
+    cache = { key, fetchedAt: now, report };
     return report;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (cache && cache.url === url) return { ...cache.report, cached: true, stale: true, error: message };
+    if (cache && cache.key === key) return { ...cache.report, cached: true, stale: true, error: message };
     return { source: url, fetchedAt, cached: false, error: message, models: [] };
   }
 }

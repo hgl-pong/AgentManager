@@ -7,13 +7,22 @@
 - **skills 矩阵** — 一屏看清每个 skill 在哪个 agent 里生效、哪些是副本、哪些链接已经断了，并能建链、把孤儿副本收进源、移除多余副本，或从源里删除 skill（同时移除指向它的链接；独立副本和外部链接保留，删除前自动快照）。
 - **提示词单一源** — `~/.agents/prompts/global.md` 是唯一正文，`CLAUDE.md` / `AGENTS.md` 通过硬链接指向它，改一处全部生效。
 - **settings 可编辑** — 按 Claude Code / Codex / pi 的官方 schema 渲染分组表单，文件里没有的设置项也能填（留空即不写入）；MCP server 有结构化编辑器，每个文件还有原始 JSON/TOML 编辑器；写入前自动快照，外部改动用 etag 检测冲突。
-- **模型从本地端点读取** — 默认请求 `http://127.0.0.1:15721/v1/models`，在「模型」页签里为三个 agent 分别选择模型；模型字段也带候选列表，支持手动输入。来源可用 `AGENT_MANAGER_MODELS_URL` 覆盖。
+- **模型 provider** — 保存多个 OpenAI 兼容 provider（只需 base URL 与 API key），选一个 active；Provider 页读取并展示它的模型，设置页的 model 字段直接使用 active provider 的候选。API key 只保存在本机、只在服务端请求时使用，GET 接口不会返回。
 - **MCP 单一源** — `~/.agents/mcp/servers.json` 是唯一源，矩阵按 agent 显示 已同步 / 有差异 / 缺失 / 孤儿 / 无效 / 不支持，支持收进源、同步到全部或单个 agent、从源删除或从 agent 移除。
 - **Hooks 单一源** — `~/.agents/hooks/hooks.json` 以事件为单位保存 Claude Code / Codex 的 hooks，矩阵显示 已同步 / 有差异 / 缺失 / 孤儿 / 不支持 / 不适用，可导入、同步、移除；pi 没有原生 hooks。
 - **缓存清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等）各占多少、多老，可按 1/7/30/90 天或整体清理；清理只是移到回收站（同一卷上是 `rename`，不复制内容），可原样恢复，只有「清空回收站」才真正释放磁盘。
 - **写前自动快照** — 每次改文件前先备份，页面上可回滚到任意一次操作；还原本身也会先建安全快照，误还原可再撤销。
 
 - **商店** — 一个页面两个目录：skill 来自 [skillstore.io](https://skillstore.io)，MCP server 来自官方 [MCP Registry](https://registry.modelcontextprotocol.io)。搜索或浏览后一键把 skill 装进 `~/.agents/skills` 并建链，或把 MCP server 写进 `~/.agents/mcp/servers.json` 并同步到勾选的 agent。页面文案支持中文 / English / 双语；skill 安装前校验 manifest 的 sha256，包里没有 `SKILL.md`、校验不符或同名已存在都不动磁盘；MCP 安装前在弹窗里填写注册表要求的 API key 等必填项。Skills 第一页顶部另有「内置技能」栏：随应用分发的 skill（目前是 skillify 与 cpp-windows-debug，前者把一次会话整理成可复用的 `SKILL.md`，后者覆盖 Windows C++ 的构建与调试）无需联网，预览与安装都走本地内容，写入前同样建快照。
+
+### Provider 页怎么用
+
+- 左侧列表保存多个 provider；每个只需要 base URL 与 API key，不要求额外名称，显示名自动取 base URL 的 host。
+- 点一个 provider 会把它设为 active；右侧表单可以改 base URL / API key。编辑时 API key 留空表示保留原 key，页面上不会回显已保存的 key。
+- 保存后请求 `<base URL>/models` 读取模型，展示 ID / 名称、分组、上下文、输出、推理强度与 thinking / 图片 / PDF 能力；可筛选、刷新，失败会显示错误或上次的缓存。
+- active provider 的模型会直接成为设置页 agent `model` 字段的候选；原本设置页的「模型」页签已移除。
+- Provider 文件是 `~/.agents/providers.json`，API key 以明文保存在本机（尽量 0600），GET `/api/providers` 只返回 `hasApiKey`，不返回 key；每次写入前自动建快照。
+- 删除 active provider 后会自动切到列表里的下一个；删完则回到空白，设置页模型候选为空，仍可手动输入模型 ID。
 
 ### 商店页怎么用
 
@@ -33,8 +42,8 @@
 
 ### 设置页怎么用
 
-- 选择 agent 后，页签下方显示该 agent 的配置文件条（文件角色、路径与字节数）；左侧索引按「模型 / 常用 / 分组 / MCP servers / 原始文件」切换。字段说明来自官方 schema（中文），文件里没有的键也会显示，填了才写入，清空即删除。
-- 「模型」页签从本地 OpenAI 兼容端点读取模型清单，为 Claude Code（`env.ANTHROPIC_MODEL` 或 `model`）、Codex（`model`）、pi（`defaultModel`）分别选择；选择后点底部「保存全部」。
+- 选择 agent 后，页签下方显示该 agent 的配置文件条（文件角色、路径与字节数）；左侧索引按「常用 / 分组 / MCP servers / 原始文件」切换。设置页不再有独立的「模型」页签，模型字段与其他字段一样编辑。字段说明来自官方 schema（中文），文件里没有的键也会显示，填了才写入，清空即删除。
+- 模型字段（Claude Code 的 `model` / `env.ANTHROPIC_MODEL`、Codex 的 `model`、pi 的 `defaultModel` 等）从 active provider 的模型清单取候选；也可以直接输入自定义 ID。选完点底部「保存全部」。
 - 「MCP」页签以 `~/.agents/mcp/servers.json` 为源：先把现有 agent 里的 server 收进源，再同步到全部 agent；同名定义不一致会标为「有差异」，可同步或以某一格为准更新源。写入前自动快照。
 - 「Hooks」页签以 `~/.agents/hooks/hooks.json` 为源，按事件分别保存 Claude/Codex 的 matcher 组与 handler；Codex 修改后需要在 Codex 里用 `/hooks` 重新信任。
 - MCP server 用结构化表单增删改；Claude 写入 `~/.claude.json` 的 `mcpServers`，Codex 写入 `config.toml`，pi 写入 `mcp.json`。
@@ -44,7 +53,7 @@
 - 提示词保存带乐观锁：文件被其它程序改过时保存会被拒绝，编辑器保留草稿并提供「载入磁盘版本」，不会静默覆盖。
 - 所有写操作都用同一个模态确认框：文案写明会改动的具体路径，删除类操作默认聚焦「取消」，`Esc` 取消；写入失败时错误显示在同一个弹框里，可直接重试。
 - `Ctrl+S` 保存：设置页保存全部改动，提示词页保存单一源；确认框打开时两个快捷键都不响应。
-- 「模型」页签用可搜索的选择器（↑/↓ + Enter 选、Esc 关），支持输入自定义 ID 或清空回退到 agent 默认值。
+- 模型字段用可搜索的选择器（↑/↓ + Enter 选、Esc 关），支持输入自定义 ID 或清空回退到 agent 默认值。
 
 ### 缓存页怎么用
 

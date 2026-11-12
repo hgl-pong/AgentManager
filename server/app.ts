@@ -12,6 +12,14 @@ import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPromp
 import { buildMcpReport, listMcpSourceNames, runMcpAction } from './mcp.ts';
 import { buildHooksReport, runHooksAction } from './hooks.ts';
 import { getModelsReport } from './models.ts';
+import {
+  activateProvider,
+  getProviderModels,
+  hasProvider,
+  listProviders,
+  removeProvider,
+  saveProvider,
+} from './providers.ts';
 import { isInside, scanMatrix } from './scan.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
 import { createSettingsRegistry, readSettings, saveSettings } from './settings.ts';
@@ -37,6 +45,8 @@ import type {
   HookActionRequest,
   PromptActionRequest,
   PromptTargetSpec,
+  ProviderActionRequest,
+  ProviderSaveRequest,
   SettingsFileDescriptor,
   SettingsSaveRequest,
   SkillActionRequest,
@@ -77,6 +87,7 @@ export interface AppConfig {
   /** Single MCP source: <home>/.agents/mcp/servers.json. */
   mcpSource: string;
   hooksSource: string;
+  providerSource: string;
   codexHooks: string;
   /** Known cache/session locations the cache page may move into the recycle bin. */
   cacheTargets: CacheTargetSpec[];
@@ -169,6 +180,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
   const settingsFiles = createSettingsRegistry({ home });
   const mcpSource = join(home, '.agents', 'mcp', 'servers.json');
   const hooksSource = join(home, '.agents', 'hooks', 'hooks.json');
+  const providerSource = join(home, '.agents', 'providers.json');
   const codexHooks = join(home, '.codex', 'hooks.json');
   const cacheRecycleRoot = resolve(
     process.env.AGENT_MANAGER_CACHE_RECYCLE ?? join(dataDir, 'recycle'),
@@ -210,6 +222,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     settingsFiles,
     mcpSource,
     hooksSource,
+    providerSource,
     codexHooks,
     cacheTargets: cacheSpecs,
     cacheRecycleRoot,
@@ -268,6 +281,7 @@ function restoreRoots(config: AppConfig): string[] {
     ...config.settingsFiles.map((file) => file.hostPath ?? file.path),
     config.mcpSource,
     config.hooksSource,
+    config.providerSource,
     config.codexHooks,
   ];
 }
@@ -526,18 +540,42 @@ async function handleRequest(
     return;
   }
 
-  if (pathname === '/api/models' && request.method === 'GET') {
+  if (pathname === '/api/providers' && request.method === 'GET') {
+    json(response, 200, listProviders(config.providerSource));
+    return;
+  }
+
+  if (pathname === '/api/providers/save' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as ProviderSaveRequest;
+    const payload = await writes.run(() =>
+      saveProvider(config.providerSource, config.snapshotRoot, body),
+    );
+    json(response, 200, payload);
+    return;
+  }
+
+  if (pathname === '/api/providers/activate' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as ProviderActionRequest;
+    const payload = await writes.run(() =>
+      activateProvider(config.providerSource, config.snapshotRoot, String(body.id)),
+    );
+    json(response, 200, payload);
+    return;
+  }
+
+  if (pathname === '/api/providers/remove' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as ProviderActionRequest;
+    const payload = await writes.run(() =>
+      removeProvider(config.providerSource, config.snapshotRoot, String(body.id)),
+    );
+    json(response, 200, payload);
+    return;
+  }
+
+  if (pathname === '/api/providers/models' && request.method === 'GET') {
     const params = new URL(request.url ?? '/', `http://${config.host}:${hooks.port}`).searchParams;
     const refresh = params.get('refresh') === '1';
-    const url =
-      params.get('url') ??
-      params.get('baseUrl') ??
-      params.get('source') ??
-      params.get('modelsUrl') ??
-      params.get('endpoint') ??
-      params.get('models_url') ??
-      undefined;
-    json(response, 200, await getModelsReport({ refresh, url }));
+    json(response, 200, await getProviderModels(config.providerSource, refresh));
     return;
   }
 

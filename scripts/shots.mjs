@@ -85,6 +85,26 @@ writeFileSync(join(home, '.claude', 'cache', 'blob.bin'), 'y'.repeat(24000));
 const PORT = 8100 + Math.floor(Math.random() * 200);
 const CDP = 9500 + Math.floor(Math.random() * 200);
 const MODELS_PORT = PORT + 500;
+// The provider page is part of the shell now; seed one against the model stub below.
+writeFileSync(
+  join(home, '.agents', 'providers.json'),
+  JSON.stringify(
+    {
+      activeId: 'provider-demo',
+      providers: [
+        {
+          id: 'provider-demo',
+          baseUrl: `http://127.0.0.1:${MODELS_PORT}/v1`,
+          apiKey: 'sk-demo',
+          createdAt: '2026-11-12T00:00:00.000Z',
+          updatedAt: '2026-11-12T00:00:00.000Z',
+        },
+      ],
+    },
+    null,
+    2,
+  ),
+);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const server = spawn(
@@ -92,7 +112,7 @@ const server = spawn(
   ['server/index.ts', '--data', join(root, 'data'), '--port', String(PORT), '--no-window'],
   {
     cwd: REPO,
-    env: { ...process.env, AGENT_MANAGER_HOME: home, AGENT_MANAGER_MODELS_URL: `http://127.0.0.1:${MODELS_PORT}/v1` },
+    env: { ...process.env, AGENT_MANAGER_HOME: home },
     stdio: 'ignore',
   },
 );
@@ -196,7 +216,7 @@ try {
     console.log('wrote', `${name}.png`);
   };
 
-  const tabs = ['skills', 'store', 'mcp', 'hooks', 'prompts', 'settings', 'cache'];
+  const tabs = ['skills', 'store', 'provider', 'mcp', 'hooks', 'prompts', 'settings', 'cache'];
 
   for (const theme of ['light', 'dark']) {
     await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/#skills` });
@@ -221,6 +241,10 @@ try {
       if (tab === 'settings') {
         await waitFn(`document.querySelector('.settings-page')`);
         await sleep(600);
+      }
+      if (tab === 'provider') {
+        await waitFn(`document.querySelector('.model-catalog-row')`, 300);
+        await sleep(300);
       }
       if (tab === 'store') {
         // The registry answers over the network, so wait for rows instead of a fixed sleep.
@@ -298,7 +322,7 @@ try {
     button?.click();
     return true;
   `);
-  for (const tab of ['skills', 'prompts', 'settings', 'store', 'cache']) {
+  for (const tab of ['skills', 'provider', 'prompts', 'settings', 'store', 'cache']) {
     await evaluate(`location.hash = '${tab}'; return true;`);
     await waitFn(`location.hash === '#${tab}'`);
     if (tab === 'settings') {

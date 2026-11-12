@@ -16,6 +16,7 @@ import { McpView } from './views/McpView.tsx';
 import { CacheView } from './views/CacheView.tsx';
 import { HooksView } from './views/HooksView.tsx';
 import { PromptsView } from './views/PromptsView.tsx';
+import { ProviderView } from './views/ProviderView.tsx';
 import type { PromptsHandle } from './views/PromptsView.tsx';
 import { SettingsView } from './views/SettingsView.tsx';
 import type { SettingsHandle } from './views/SettingsView.tsx';
@@ -41,6 +42,13 @@ const TABS = [
     title: '商店',
     group: '管理资产',
     lede: '搜索并安装 skill 与 MCP server，再链接或同步到三个 agent。',
+  },
+  {
+    key: 'provider',
+    label: 'Provider',
+    title: 'Provider',
+    group: '单一源',
+    lede: '选择模型来源，读取可用模型。',
   },
   {
     key: 'prompts',
@@ -82,7 +90,7 @@ const TABS = [
 /** Sidebar groups, in reading order. Every tab belongs to exactly one. */
 const NAV_GROUPS = [
   { label: '管理资产', keys: ['skills', 'store'] },
-  { label: '单一源', keys: ['prompts', 'mcp', 'hooks'] },
+  { label: '单一源', keys: ['provider', 'prompts', 'mcp', 'hooks'] },
   { label: '本机维护', keys: ['cache', 'settings'] },
 ] as const;
 
@@ -139,6 +147,7 @@ export default function App() {
 
   const promptsDirty = useRef(false);
   const settingsDirty = useRef(false);
+  const providerDirty = useRef(false);
   const promptsHandle = useRef<PromptsHandle | null>(null);
   const settingsHandle = useRef<SettingsHandle | null>(null);
   const metaSeq = useRef(0);
@@ -218,6 +227,7 @@ export default function App() {
       const dirty: string[] = [];
       if (tab === 'prompts' && promptsDirty.current) dirty.push('提示词');
       if (tab === 'settings' && settingsDirty.current) dirty.push('设置');
+      if (tab === 'provider' && providerDirty.current) dirty.push('Provider');
       if (dirty.length > 0) {
         const description = `${dirty.join('、')}有未保存的修改，切换页面会放弃这些修改。`;
         void ask({
@@ -290,7 +300,7 @@ export default function App() {
   const attentionTotal = attention.reduce((sum, entry) => sum + entry.count, 0);
 
   function anyDirty(): boolean {
-    return promptsDirty.current || settingsDirty.current;
+    return promptsDirty.current || settingsDirty.current || providerDirty.current;
   }
 
   function select(key: TabKey) {
@@ -347,12 +357,17 @@ export default function App() {
 
   const markPromptsDirty = useCallback((dirty: boolean) => {
     promptsDirty.current = dirty;
-    setDraftDirty(promptsDirty.current || settingsDirty.current);
+    setDraftDirty(promptsDirty.current || settingsDirty.current || providerDirty.current);
   }, []);
 
   const markSettingsDirty = useCallback((dirty: boolean) => {
     settingsDirty.current = dirty;
-    setDraftDirty(promptsDirty.current || settingsDirty.current);
+    setDraftDirty(promptsDirty.current || settingsDirty.current || providerDirty.current);
+  }, []);
+
+  const markProviderDirty = useCallback((dirty: boolean) => {
+    providerDirty.current = dirty;
+    setDraftDirty(promptsDirty.current || settingsDirty.current || providerDirty.current);
   }, []);
 
   function chooseTheme(mode: ThemeMode) {
@@ -513,6 +528,9 @@ export default function App() {
           )}
           {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
           {tab === 'hooks' && <HooksView version={dataVersion} onChanged={changed} />}
+          {tab === 'provider' && (
+            <ProviderView version={dataVersion} onDirtyChange={markProviderDirty} />
+          )}
           {tab === 'prompts' && (
             <PromptsView
               version={dataVersion}

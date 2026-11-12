@@ -35,7 +35,7 @@ parent: agent-manager
 - **写路径先快照**：三个 skills 动作与两个提示词动作都先调用 `createSnapshot`，把受影响路径和将要新建的路径登记下来，失败也能还原。
 - **提示词保存有乐观锁**：`GET /api/prompts/content` 返回 `etag`（文本 sha256；文件不存在时为 `missing`），`POST` 必须回传它；不一致返回 409 而不覆盖。前端遇到 409 会保留草稿、重新读取磁盘正文、亮出「载入磁盘版本」入口。省略 etag 时仍然写入（兼容旧调用方），但界面始终会传。
 - **settings 写回是受控路径**：界面编辑用户级配置（`~/.claude/settings.json`、`~/.claude.json` 的 `mcpServers` 子树、`~/.codex/config.toml`、`~/.pi/agent/settings.json` 与 `mcp.json`）。字段目录由 `scripts/build-settings-catalog.mjs` 从 `schemas/` 的三份官方 schema 生成；保存先校验、再快照、最后临时文件 + rename 原子替换，etag 不一致返回 409。未知键原样保留；托管专用键只展示并标注。
-- **模型清单是运行期数据**：`server/models.ts` 从 `AGENT_MANAGER_MODELS_URL`（默认 `http://127.0.0.1:15721/v1`）拉取 OpenAI 兼容的 `/models`，内存缓存 60 秒，失败回退缓存；前端「模型」页签据此为三个 agent 选择模型，字段表单也复用这份候选。
+- **模型 provider 是唯一模型源**：`~/.agents/providers.json` 保存多个 OpenAI 兼容 provider（base URL + API key），其中一个为 active；`server/providers.ts` 负责读写、切换、删除与模型读取，`server/models.ts` 只负责请求 `/models`、归一化与 60 秒缓存。API key 只在服务端用于请求，`GET /api/providers` 只返回 `hasApiKey`；Provider 页展示 active provider 的模型，设置页的 model 字段复用同一份候选。provider 文件写入前建快照，API key 尽量以 0600 权限保存。
 - **MCP 用源文件 + 同步**：`~/.agents/mcp/servers.json` 保存归一化定义（transport/command/args/env/cwd/url/headers），三家 agent 的配置按各自格式物化。矩阵比较核心字段，忽略 Codex/pi 特有字段；状态为 synced/drift/missing/orphan/invalid/unsupported。源写入与 agent 写入都先快照；agent 侧复用 settings 的 etag/校验/原子写。MCP 无法像 skills 一样用链接共享，所以这里是「同步副本」而不是链接。
 - **Hooks 用事件级源文件 + 同步**：`~/.agents/hooks/hooks.json` 按事件保存 `claude`/`codex` 的 matcher 组数组；Claude 写 `~/.claude/settings.json#hooks`，Codex 写 `~/.codex/hooks.json#hooks`。矩阵按事件比较；pi 无原生 hooks。Codex 修改 hooks 后需要用 `/hooks` 重新信任（哈希变化），同步时会提示。
 - **前端用 Vite + React**：后续交互都带确认与回滚状态，比起服务端直出少一次重写。
@@ -57,7 +57,7 @@ parent: agent-manager
 - 每个写操作都可还原：配置类是快照，缓存类是回收站。
 - 商店只往源目录与 `data/tmp/` 写；skill 内容永不执行，MCP server 不会被启动，不覆盖已有的同名条目。
 - 配置文件永不写入；`POST /api/open` 只接受已知配置路径的白名单。
-- API 只监听 `127.0.0.1`，请求体上限 1MB。
+- API 只监听 `127.0.0.1`，请求体上限 1MB。Provider 的 API key 只在服务端使用，任何 GET 响应都不返回它。
 - 新增 agent 只需在 `server/index.ts` 的清单里加一条 `{key, label, root}`，扫描逻辑不动。
 - 前端不自己推导状态：格子显示的是后端给出的 `state`。
 - 每个写操作都有确认入口，确认文案必须写明会改动/删除的具体路径；删除类操作的默认焦点是「取消」。

@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { HttpError, api, errorMessage, isAbortError } from '../api.ts';
 import { isConfirmOpen, useConfirmDialog } from '../lib/confirm.tsx';
 import type {
-  ModelInfo,
   ModelsReport,
   SettingsAgentCatalog,
   SettingsCatalog,
@@ -20,7 +19,6 @@ import {
   type FieldApi,
 } from '../components/FieldEditor.tsx';
 import { McpEditor } from '../components/McpEditor.tsx';
-import { ModelPicker } from '../components/ModelPicker.tsx';
 import { RawEditor } from '../components/RawEditor.tsx';
 import {
   asObject,
@@ -66,7 +64,6 @@ interface FileIssues {
 }
 
 type Nav =
-  | { kind: 'models' }
   | { kind: 'common' }
   | { kind: 'section'; key: string }
   | { kind: 'mcp' }
@@ -87,27 +84,8 @@ function modelPathsFor(agentKey: string): Set<string> {
   return new Set();
 }
 
-function formatTokens(value: number | undefined): string {
-  if (!value || value <= 0) return '';
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`;
-  if (value >= 1000) return `${Math.round(value / 1000)}K`;
-  return String(value);
-}
-
 function compactPath(value: string): string {
   return value.replace(/^[A-Za-z]:\\Users\\[^\\]+\\(?=\.)/i, '~\\');
-}
-
-interface ModelTarget {
-  agentKey: string;
-  agentLabel: string;
-  file: SettingsFileState;
-  draft: FileDraft;
-  path: string[];
-  label: string;
-  value: string;
-  secondary?: string;
-  note?: string;
 }
 
 function toDraft(file: SettingsFileState, requestedMode?: DraftMode): FileDraft {
@@ -308,19 +286,6 @@ export function SettingsView({
   const [navError, setNavError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [models, setModels] = useState<ModelsReport | null>(null);
-  const [catalogQuery, setCatalogQuery] = useState('');
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsSourceInput, setModelsSourceInput] = useState(() => {
-    try {
-      return window.localStorage.getItem('agentmanager.modelsSource') ?? '';
-    } catch {
-      return '';
-    }
-  });
-  const modelsSourceRef = useRef(modelsSourceInput);
-  useEffect(() => {
-    modelsSourceRef.current = modelsSourceInput;
-  }, [modelsSourceInput]);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const seqRef = useRef(0);
   const dirtyRef = useRef(false);
@@ -342,37 +307,24 @@ export function SettingsView({
     [],
   );
 
-  const loadModels = useCallback(async (refresh = false, sourceOverride?: string) => {
-    const source = (sourceOverride ?? modelsSourceRef.current).trim();
-    setModelsLoading(true);
+  // Models are only a candidate list for the model fields now; the Provider page owns the source.
+  const loadModels = useCallback(async (refresh = false) => {
     try {
-      const report = await api.models(refresh, undefined, source || undefined);
-      setModels(report);
-      if (report.source) {
-        setModelsSourceInput(report.source);
-        modelsSourceRef.current = report.source;
-        try {
-          window.localStorage.setItem('agentmanager.modelsSource', report.source);
-        } catch {
-          // best effort
-        }
-      }
+      setModels(await api.providerModels(refresh));
     } catch (reason) {
       setModels({
-        source: source || '',
+        source: '',
         fetchedAt: new Date().toISOString(),
         cached: false,
         error: errorMessage(reason),
         models: [],
       });
-    } finally {
-      setModelsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadModels(false);
-  }, [loadModels]);
+  }, [loadModels, version]);
 
   useEffect(() => {
     contentRef.current?.closest('.workspace')?.scrollTo({ top: 0 });
@@ -639,12 +591,6 @@ export function SettingsView({
   }
 
   function chooseNav(next: Nav) {
-    if (next.kind === 'models') {
-      setNav(next);
-      setNavError(null);
-      setActionError(null);
-      return;
-    }
     if (next.kind === 'raw') {
       setNav(next);
       setNavError(null);
@@ -1078,293 +1024,6 @@ export function SettingsView({
     );
   }
 
-  function modelTargetFor(agentKey: string): ModelTarget | null {
-    const agentCatalog = catalog?.agents.find((entry) => entry.key === agentKey);
-    if (!agentCatalog) return null;
-    const file = pickPrimaryFile(agentCatalog, filesOf(report, agentKey));
-    const draft = file ? drafts[file.id] : undefined;
-    if (!file || !draft) return null;
-    const text = (value: unknown) => (typeof value === 'string' ? value : '');
-
-    if (agentKey === 'claude') {
-      const env = isRecord(draft.data.env) ? draft.data.env : {};
-      const envModel = text(env.ANTHROPIC_MODEL);
-      const settingsModel = text(draft.data.model);
-      const useEnv = envModel !== '';
-      return {
-        agentKey,
-        agentLabel: agentCatalog.label,
-        file,
-        draft,
-        path: useEnv ? ['env', 'ANTHROPIC_MODEL'] : ['model'],
-        label: useEnv ? '生效模型 · env.ANTHROPIC_MODEL' : '设置模型 · settings.model',
-        value: useEnv ? envModel : settingsModel,
-        ...(useEnv && settingsModel ? { secondary: `settings.model = ${settingsModel}（被 env 覆盖）` } : {}),
-        note: useEnv
-          ? 'ANTHROPIC_MODEL 覆盖 settings.model；清空后将回落到 model。'
-          : '未设置 env.ANTHROPIC_MODEL 时，由 settings.model 决定默认模型。',
-      };
-    }
-    if (agentKey === 'codex') {
-      const provider = text(draft.data.model_provider);
-      return {
-        agentKey,
-        agentLabel: agentCatalog.label,
-        file,
-        draft,
-        path: ['model'],
-        label: '模型 · model',
-        value: text(draft.data.model),
-        ...(provider ? { secondary: `model_provider = ${provider}` } : {}),
-        note: '写入 ~/.codex/config.toml 的 model。',
-      };
-    }
-    if (agentKey === 'pi') {
-      const provider = text(draft.data.defaultProvider);
-      return {
-        agentKey,
-        agentLabel: agentCatalog.label,
-        file,
-        draft,
-        path: ['defaultModel'],
-        label: '默认模型 · defaultModel',
-        value: text(draft.data.defaultModel),
-        ...(provider ? { secondary: `defaultProvider = ${provider}` } : {}),
-        note: '模型需存在于 pi 的 models.json；可用 pi 的同步脚本更新清单。',
-      };
-    }
-    return null;
-  }
-
-  function applyModel(target: ModelTarget, value: string) {
-    if (!switchToForm(target.file.id)) {
-      showToast('error', '原始文件无法解析，未应用模型更改。');
-      return;
-    }
-    setValue(target.file.id, target.path, value.trim() === '' ? undefined : value.trim());
-  }
-
-  function renderModelsContent() {
-    const targets = ['claude', 'codex', 'pi']
-      .map((key) => modelTargetFor(key))
-      .filter((target): target is ModelTarget => target !== null);
-    const list = models?.models ?? [];
-    const needle = catalogQuery.trim().toLowerCase();
-    const catalogModels =
-      needle === ''
-        ? list
-        : list.filter((model) => `${model.id} ${model.name} ${model.group}`.toLowerCase().includes(needle));
-    const unused = targets.filter((target) => list.length > 0 && !list.some((model) => model.id === target.value));
-
-    return (
-      <div className="settings-panel models-panel">
-        <section className="models-section">
-          <header className="models-section-head">
-            <div>
-              <h3>当前选择</h3>
-              <p className="meta">每个 agent 使用哪个模型。改完点底部「保存全部」写入配置文件。</p>
-            </div>
-          </header>
-
-          <div className="model-cards">
-            {targets.map((target) => (
-              <article className={`model-card agent-${target.agentKey}`} key={target.agentKey}>
-                <header className="model-card-head">
-                  <div className="model-card-title">
-                    <strong>{target.agentLabel}</strong>
-                    <span className="model-card-target">
-                      <code title={target.file.path}>{compactPath(target.file.path)}</code>
-                      <span className="meta">{target.label}</span>
-                    </span>
-                  </div>
-                  {target.secondary && <span className="model-card-secondary">{target.secondary}</span>}
-                </header>
-
-                <ModelPicker
-                  label={`${target.agentLabel} 模型`}
-                  models={list}
-                  value={target.value}
-                  placeholder="未设置 · 使用 agent 默认值"
-                  disabled={busy !== null}
-                  onChange={(value) => applyModel(target, value)}
-                />
-
-                {target.note && <p className="model-card-note">{target.note}</p>}
-              </article>
-            ))}
-            {targets.length === 0 && <p className="muted">没有可写入的模型位置。</p>}
-          </div>
-        </section>
-
-        <section className="models-section">
-          <header className="models-section-head">
-            <div>
-              <h3>模型源</h3>
-              <p className="meta">
-                从本地 OpenAI 兼容端点读取模型清单。可填 base URL 或完整的 <code>/models</code> 地址。
-              </p>
-            </div>
-            <div className="models-section-actions">
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void loadModels(true, modelsSourceInput)}
-                disabled={modelsLoading || modelsSourceInput.trim() === ''}
-              >
-                {modelsLoading ? '读取中…' : '读取模型'}
-              </button>
-              <button type="button" onClick={() => void loadModels(true, modelsSourceInput)} disabled={modelsLoading}>
-                {modelsLoading ? '刷新中…' : '刷新'}
-              </button>
-            </div>
-          </header>
-
-          <div className="models-source-row">
-            <input
-              className="control"
-              type="url"
-              value={modelsSourceInput}
-              placeholder="http://127.0.0.1:15721/v1"
-              aria-label="模型源 URL"
-              spellCheck={false}
-              autoComplete="off"
-              disabled={modelsLoading}
-              onChange={(event) => setModelsSourceInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void loadModels(true, (event.target as HTMLInputElement).value);
-                }
-              }}
-            />
-          </div>
-
-          <p className="models-status">
-            <span>
-              来源 <code>{models?.source || '正在读取…'}</code>
-            </span>
-            <span className="meta">{list.length} 个模型</span>
-            {models?.fetchedAt && <span className="meta">更新于 {new Date(models.fetchedAt).toLocaleTimeString()}</span>}
-            {models?.cached && <span className="meta">缓存</span>}
-            {models?.stale && <span className="meta">端点不可用，显示上次结果</span>}
-          </p>
-          {models?.error && (
-            <p className="error">模型列表读取失败：{models.error}；仍可在选择器里输入自定义 ID。</p>
-          )}
-          {modelsLoading && !models && <p className="muted">读取模型列表…</p>}
-          {unused.length > 0 && (
-            <p className="hint">
-              {unused.map((target) => `${target.agentLabel}「${target.value}」`).join('、')}
-              不在当前模型源里，仍会按原样写入。
-            </p>
-          )}
-        </section>
-
-        <section className="models-section">
-          <header className="models-section-head">
-            <div>
-              <h3>模型清单</h3>
-              <p className="meta">端点上能用的全部模型，以及它们声明的能力。</p>
-            </div>
-            <div className="models-section-actions">
-              <input
-                className="control models-catalog-search"
-                type="search"
-                value={catalogQuery}
-                placeholder="筛选 ID、名称或分组"
-                aria-label="筛选模型清单"
-                spellCheck={false}
-                onChange={(event) => setCatalogQuery(event.target.value)}
-              />
-              <span className="meta">
-                {catalogModels.length === list.length
-                  ? `${list.length} 个`
-                  : `${catalogModels.length} / ${list.length} 个`}
-              </span>
-            </div>
-          </header>
-          {list.length > 0 ? (
-            <div className="models-catalog-scroll">
-              <div className="table-wrap">
-                <table className="model-catalog-table">
-                  <colgroup>
-                    <col className="col-id" />
-                    <col className="col-group" />
-                    <col className="col-num" />
-                    <col className="col-num" />
-                    <col className="col-effort" />
-                    <col className="col-caps" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th scope="col">ID / 名称</th>
-                      <th scope="col">分组</th>
-                      <th scope="col">上下文</th>
-                      <th scope="col">输出</th>
-                      <th scope="col">推理强度</th>
-                      <th scope="col">其他能力</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogModels.map((model) => (
-                      <tr key={model.id} className="model-catalog-row">
-                        <td className="model-catalog-id">
-                          <code>{model.id}</code>
-                          <span className="model-catalog-name">{model.name !== model.id ? model.name : ''}</span>
-                        </td>
-                        <td className="model-catalog-group">
-                          <span className="model-group-badge">
-                            {model.group === 'default' ? '默认' : model.group}
-                          </span>
-                        </td>
-                        <td className="model-catalog-num">{formatTokens(model.contextWindow) || '—'}</td>
-                        <td className="model-catalog-num">{formatTokens(model.maxOutputTokens) || '—'}</td>
-                        <td className="model-catalog-effort">
-                          <div className="model-cap-row">
-                            {model.effort && model.effortLevels?.length ? (
-                              model.effortLevels.map((level) => (
-                                <span key={level} className="model-cap model-cap--effort">
-                                  {level}
-                                </span>
-                              ))
-                            ) : model.effort ? (
-                              <span className="model-cap model-cap--effort">effort</span>
-                            ) : (
-                              <span className="model-cap model-cap--none">—</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="model-catalog-caps">
-                          <div className="model-cap-row">
-                            {model.thinking && <span className="model-cap model-cap--thinking">thinking</span>}
-                            {model.imageInput && <span className="model-cap model-cap--image">图片</span>}
-                            {model.pdfInput && <span className="model-cap model-cap--pdf">PDF</span>}
-                            {!model.thinking && !model.imageInput && !model.pdfInput && (
-                              <span className="model-cap model-cap--none">—</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {catalogModels.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="muted">
-                          没有匹配的模型。
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <p className="muted">暂无模型数据，填写模型源 URL 后点「读取模型」。</p>
-          )}
-        </section>
-      </div>
-    );
-  }
-
   function renderFormContent() {
     if (!formDraft || !formApi) {
       return <p className="muted">没有找到该 agent 的设置文件。</p>;
@@ -1559,9 +1218,7 @@ export function SettingsView({
   }
 
   let content: ReactNode;
-  if (nav.kind === 'models') {
-    content = renderModelsContent();
-  } else if (agentFiles.length === 0) {
+  if (agentFiles.length === 0) {
     content = (
       <section className="card empty-state">
         <p className="muted">没有找到 {agent.label} 的配置文件，可能尚未安装或路径不存在。</p>
@@ -1634,17 +1291,6 @@ export function SettingsView({
         <aside className="settings-nav">
           <nav aria-label="设置分类">
             <ul>
-              <li>
-                <button
-                  type="button"
-                  className={nav.kind === 'models' ? 'nav-item is-active' : 'nav-item'}
-                  aria-current={nav.kind === 'models' ? 'page' : undefined}
-                  onClick={() => chooseNav({ kind: 'models' })}
-                >
-                  模型
-                  <span className="nav-count">{models ? models.models.length : '—'}</span>
-                </button>
-              </li>
               <li>
                 <button
                   type="button"
