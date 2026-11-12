@@ -1,4 +1,7 @@
 import type {
+  BuiltinInstallRequest,
+  BuiltinInstallResponse,
+  BuiltinSkillReport,
   CacheActionRequest,
   CacheActionResponse,
   CacheReport,
@@ -136,6 +139,9 @@ export const api = {
     ),
   installStoreSkill: (body: StoreInstallRequest) =>
     request<StoreInstallResponse>('/api/store/install', post(body), STORE_TIMEOUT_MS),
+  builtins: (signal?: AbortSignal) => request<BuiltinSkillReport>('/api/builtins', { signal }),
+  installBuiltin: (body: BuiltinInstallRequest) =>
+    request<BuiltinInstallResponse>('/api/builtins/install', post(body), STORE_TIMEOUT_MS),
   installStoreMcp: (body: StoreMcpInstallRequest) =>
     request<StoreMcpInstallResponse>('/api/store/install-mcp', post(body), STORE_TIMEOUT_MS),
   settingsCatalog: (signal?: AbortSignal) =>

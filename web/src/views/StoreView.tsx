@@ -16,6 +16,8 @@ import {
 } from '../lib/store-i18n.ts';
 import type { StoreLang } from '../lib/store-i18n.ts';
 import type {
+  BuiltinSkill,
+  BuiltinSkillReport,
   StoreKind,
   StoreMcpInstallResponse,
   StoreMcpServer,
@@ -55,6 +57,111 @@ function langLabel(lang: StoreLang, option: StoreLang): string {
   return lang === 'en' ? 'Bilingual' : '双语';
 }
 
+type Translate = (key: keyof typeof STORE_TEXT, ...values: Array<string | number>) => string;
+
+/**
+ * One skill tile, shared by the registry grid and the built-in shelf. Built-ins keep their own
+ * class names so the two shelves stay distinguishable without duplicating the layout.
+ */
+function SkillCard({
+  item,
+  lang,
+  t,
+  builtin,
+  busy,
+  onOpen,
+  onInstall,
+}: {
+  item: StoreSkill;
+  lang: StoreLang;
+  t: Translate;
+  builtin: boolean;
+  busy: boolean;
+  onOpen: () => void;
+  onInstall: () => void;
+}) {
+  const updated = formatDate(item.updatedAt);
+  const cardClass = builtin ? 'builtin-card' : 'store-card';
+  const actionClass = builtin ? 'builtin-action' : 'store-action';
+  return (
+    <article
+      className={item.inSource ? `${cardClass} is-installed` : cardClass}
+      role="button"
+      tabIndex={0}
+      title={t('detailOpen')}
+      aria-label={t('detailOpenLabel', item.name)}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <header>
+        <div className="store-title">
+          <h3>{item.name}</h3>
+          <span className="store-owner">
+            {item.owner === 'unknown' ? item.slug : `${item.owner}/${item.slug}`}
+          </span>
+        </div>
+        {item.version && <span className="tag">v{item.version}</span>}
+      </header>
+
+      <div className="store-badges">
+        {builtin && <span className="tag store-builtin-tag">{t('builtinBadge')}</span>}
+        {item.category && <span className="tag">{categoryLabel(lang, item.category)}</span>}
+        {item.risk && (
+          <span className={`tag store-risk store-risk-${item.risk}`}>{riskLabel(lang, item.risk)}</span>
+        )}
+        {item.quality !== undefined && (
+          <span className="tag" title={t('quality')}>
+            {t('quality')} {item.quality}
+          </span>
+        )}
+        {item.hasScripts && <span className="tag">{t('scripts')}</span>}
+        {item.needsNetwork && <span className="tag">{t('network')}</span>}
+      </div>
+
+      {item.summary !== '' && <p className="store-summary">{item.summary}</p>}
+
+      <footer>
+        <div className="store-stats">
+          {item.downloads > 0 && (
+            <span title={t('downloads')}>↓ {formatCount(item.downloads)}</span>
+          )}
+          {item.favorites > 0 && (
+            <span title={t('favorites')}>★ {formatCount(item.favorites)}</span>
+          )}
+          {updated && (
+            <span>
+              {t('updated')} {updated}
+            </span>
+          )}
+        </div>
+        {item.inSource ? (
+          <span className={`${actionClass} is-installed`} title={t('inSourceTitle')}>
+            {t('inSource')}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={actionClass}
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation();
+              onInstall();
+            }}
+          >
+            {busy ? t('installing') : t('install')}
+          </button>
+        )}
+      </footer>
+    </article>
+  );
+}
+
 export function StoreView({
   version,
   agents,
@@ -82,6 +189,8 @@ export function StoreView({
   // Only a skill install can be followed up on the Skills page; MCP installs sync in place.
   const [noticeHasLinks, setNoticeHasLinks] = useState(false);
   const [installing, setInstalling] = useState<StoreMcpServer | null>(null);
+  // Bundled skills carry their whole preview, so this shelf works without the registry.
+  const [builtins, setBuiltins] = useState<BuiltinSkillReport | null>(null);
   const [detail, setDetail] = useState<StoreDetailTarget | null>(null);
   // null means "follow whatever is detected": a new agent is then linked without extra clicks.
   const [targets, setTargets] = useState<string[] | null>(null);
@@ -103,6 +212,19 @@ export function StoreView({
 
   const detected = useMemo(() => agents.filter((agent) => agent.detected), [agents]);
   const selected = targets ?? detected.map((agent) => agent.key);
+
+  // Built-ins lead the skills tab. They are matched locally, so a search can still find them.
+  const visibleBuiltins = useMemo(() => {
+    if (kind !== 'skill' || page !== 1) return [] as BuiltinSkill[];
+    const items = builtins?.items ?? [];
+    const needle = submitted.trim().toLowerCase();
+    if (needle === '') return items;
+    return items.filter((item) =>
+      [item.name, item.slug, item.owner, item.summary, ...item.capabilities, ...item.limitations].some(
+        (value) => value.toLowerCase().includes(needle),
+      ),
+    );
+  }, [builtins, kind, page, submitted]);
 
   const load = useCallback(
     async (
@@ -140,6 +262,21 @@ export function StoreView({
     void load(kind, submitted, { page, cursor }, {}, controller.signal);
     return () => controller.abort();
   }, [load, kind, submitted, page, cursor, version]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void api
+      .builtins(controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setBuiltins(next);
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted || isAbortError(reason)) return;
+        // The shelf is a convenience; a failure must not take the registry grid down with it.
+        setBuiltins(null);
+      });
+    return () => controller.abort();
+  }, [version]);
 
   // Changing page should start the reader at the top of the grid, not at the pager.
   const mounted = useRef(false);
@@ -216,9 +353,11 @@ export function StoreView({
   }
 
   function requestInstall(item: StoreSkill) {
+    const isBuiltin = item.builtin === true;
     const linkKeys = selected;
     const linkLabels = agents.filter((agent) => linkKeys.includes(agent.key)).map((agent) => agent.label);
-    const destination = report ? joinPath(report.sourcePath, item.name) : item.name;
+    const sourcePath = isBuiltin ? (builtins?.sourcePath ?? report?.sourcePath) : report?.sourcePath;
+    const destination = sourcePath ? joinPath(sourcePath, item.name) : item.name;
     const publisher = item.owner === 'unknown' ? item.slug : item.owner;
 
     setNotice(null);
@@ -227,7 +366,7 @@ export function StoreView({
       message: (
         <>
           <p>
-            {t('dialogDownload', `${publisher}/${item.slug}`)}
+            {isBuiltin ? t('dialogBuiltin') : t('dialogDownload', `${publisher}/${item.slug}`)}
             <br />
             <code>{destination}</code>
           </p>
@@ -237,31 +376,48 @@ export function StoreView({
             <p>{t('dialogNoLinks')}</p>
           )}
           <p className="hint">
-            {pair(
-              `发布者 ${publisher} · 风险 ${riskLabel('zh', item.risk ?? 'safe')} · 质量 ${item.quality ?? '—'}`,
-              `publisher ${publisher} · risk ${riskLabel('en', item.risk ?? 'safe')} · quality ${item.quality ?? '—'}`,
-            )}
-            {item.license ? ` · ${item.license}` : ''}
+            {isBuiltin
+              ? `${publisher}/${item.slug}${item.license ? ` · ${item.license}` : ''}`
+              : pair(
+                  `发布者 ${publisher} · 风险 ${riskLabel('zh', item.risk ?? 'safe')} · 质量 ${item.quality ?? '—'}`,
+                  `publisher ${publisher} · risk ${riskLabel('en', item.risk ?? 'safe')} · quality ${item.quality ?? '—'}`,
+                )}
+            {!isBuiltin && item.license ? ` · ${item.license}` : ''}
           </p>
           {item.hasScripts && <p className="warning">{t('dialogScripts')}</p>}
-          <p className="hint">{t('dialogHint')}</p>
+          <p className="hint">{isBuiltin ? t('dialogBuiltinHint') : t('dialogHint')}</p>
         </>
       ),
       confirmLabel: t('install'),
       run: async () => {
         setBusy(item.id);
         try {
-          const result = await api.installStoreSkill({ owner: item.owner, slug: item.slug, agents: linkKeys });
-          setReport((current) =>
-            current?.kind === 'skill'
-              ? {
-                  ...current,
-                  items: current.items.map((entry) =>
-                    entry.id === item.id ? { ...entry, inSource: true } : entry,
-                  ),
-                }
-              : current,
-          );
+          const result = isBuiltin
+            ? await api.installBuiltin({ name: item.slug, agents: linkKeys })
+            : await api.installStoreSkill({ owner: item.owner, slug: item.slug, agents: linkKeys });
+          if (isBuiltin) {
+            setBuiltins((current) =>
+              current
+                ? {
+                    ...current,
+                    items: current.items.map((entry) =>
+                      entry.slug === item.slug ? { ...entry, inSource: true } : entry,
+                    ),
+                  }
+                : current,
+            );
+          } else {
+            setReport((current) =>
+              current?.kind === 'skill'
+                ? {
+                    ...current,
+                    items: current.items.map((entry) =>
+                      entry.id === item.id ? { ...entry, inSource: true } : entry,
+                    ),
+                  }
+                : current,
+            );
+          }
           const linked = result.links.filter((link) => link.state === 'linked').map((link) => link.label);
           const parts = [
             t('noticeInstalled', result.name),
@@ -495,93 +651,44 @@ export function StoreView({
         </div>
       )}
 
+      {visibleBuiltins.length > 0 && (
+        <section className="store-builtins">
+          <div className="store-builtins-head">
+            <h2>{t('builtinGroup')}</h2>
+            <span className="hint">{t('builtinGroupHint')}</span>
+          </div>
+          <div className="store-grid">
+            {visibleBuiltins.map((item) => (
+              <SkillCard
+                key={item.id}
+                item={item}
+                lang={lang}
+                t={t}
+                builtin
+                busy={busy !== null}
+                onOpen={() => setDetail({ kind: 'skill', item, detail: item })}
+                onInstall={() => requestInstall(item)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {report && report.items.length > 0 && (
         <div className="store-grid">
           {report.kind === 'skill'
-            ? report.items.map((item) => {
-                const updated = formatDate(item.updatedAt);
-                return (
-                  <article
-                    key={item.id}
-                    className={item.inSource ? 'store-card is-installed' : 'store-card'}
-                    role="button"
-                    tabIndex={0}
-                    title={t('detailOpen')}
-                    aria-label={t('detailOpenLabel', item.name)}
-                    onClick={() => setDetail({ kind: 'skill', item })}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setDetail({ kind: 'skill', item });
-                      }
-                    }}
-                  >
-                    <header>
-                      <div className="store-title">
-                        <h3>{item.name}</h3>
-                        <span className="store-owner">
-                          {item.owner === 'unknown' ? item.slug : `${item.owner}/${item.slug}`}
-                        </span>
-                      </div>
-                      {item.version && <span className="tag">v{item.version}</span>}
-                    </header>
-
-                    <div className="store-badges">
-                      {item.category && (
-                        <span className="tag">{categoryLabel(lang, item.category)}</span>
-                      )}
-                      {item.risk && (
-                        <span className={`tag store-risk store-risk-${item.risk}`}>
-                          {riskLabel(lang, item.risk)}
-                        </span>
-                      )}
-                      {item.quality !== undefined && (
-                        <span className="tag" title={t('quality')}>
-                          {t('quality')} {item.quality}
-                        </span>
-                      )}
-                      {item.hasScripts && <span className="tag">{t('scripts')}</span>}
-                      {item.needsNetwork && <span className="tag">{t('network')}</span>}
-                    </div>
-
-                    {item.summary !== '' && <p className="store-summary">{item.summary}</p>}
-
-                    <footer>
-                      <div className="store-stats">
-                        {item.downloads > 0 && (
-                          <span title={t('downloads')}>↓ {formatCount(item.downloads)}</span>
-                        )}
-                        {item.favorites > 0 && (
-                          <span title={t('favorites')}>★ {formatCount(item.favorites)}</span>
-                        )}
-                        {updated && (
-                          <span>
-                            {t('updated')} {updated}
-                          </span>
-                        )}
-                      </div>
-                      {item.inSource ? (
-                        <span className="store-action is-installed" title={t('inSourceTitle')}>
-                          {t('inSource')}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="store-action"
-                          disabled={busy !== null}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestInstall(item);
-                          }}
-                        >
-                          {busy === item.id ? t('installing') : t('install')}
-                        </button>
-                      )}
-                    </footer>
-                  </article>
-                );
-              })
+            ? report.items.map((item) => (
+                <SkillCard
+                  key={item.id}
+                  item={item}
+                  lang={lang}
+                  t={t}
+                  builtin={false}
+                  busy={busy !== null}
+                  onOpen={() => setDetail({ kind: 'skill', item })}
+                  onInstall={() => requestInstall(item)}
+                />
+              ))
             : report.items.map((item) => {
                 const updated = formatDate(item.updatedAt);
                 const transports = [...new Set(item.options.map((option) => option.transport))];

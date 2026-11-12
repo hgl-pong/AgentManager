@@ -5,6 +5,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { importSkill, linkSkill, removeSkill, unlinkSkill } from './actions.ts';
+import { installBuiltinSkill, listBuiltinSkills } from './builtins.ts';
 import { cacheTargets, runCacheAction, scanCache } from './cache.ts';
 import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
@@ -27,6 +28,7 @@ import { VERSION } from './version.ts';
 import { AppError } from '../shared/types.ts';
 import type {
   AgentSpec,
+  BuiltinInstallRequest,
   CacheActionRequest,
   CacheTargetSpec,
   ConfigFileSpec,
@@ -657,6 +659,33 @@ async function handleRequest(
         tempRoot: config.storeTempRoot,
         agents: config.agents,
         request: body,
+      });
+      return { ...result, matrix: safeMatrix(config) };
+    });
+    json(response, 200, payload);
+    return;
+  }
+
+  if (pathname === '/api/builtins' && request.method === 'GET') {
+    json(response, 200, listBuiltinSkills({
+      source: config.source,
+      projectRoot: config.projectRoot,
+      ...(config.assets ? { assets: config.assets } : {}),
+    }));
+    return;
+  }
+
+  if (pathname === '/api/builtins/install' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as BuiltinInstallRequest;
+    const payload = await writes.run(() => {
+      const result = installBuiltinSkill({
+        source: config.source,
+        snapshotRoot: config.snapshotRoot,
+        tempRoot: config.storeTempRoot,
+        agents: config.agents,
+        request: body,
+        projectRoot: config.projectRoot,
+        ...(config.assets ? { assets: config.assets } : {}),
       });
       return { ...result, matrix: safeMatrix(config) };
     });

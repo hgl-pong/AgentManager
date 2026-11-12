@@ -11,7 +11,7 @@ import type {
 } from '../../../shared/types.ts';
 
 export type StoreDetailTarget =
-  | { kind: 'skill'; item: StoreSkill }
+  | { kind: 'skill'; item: StoreSkill; detail?: StoreSkillDetail }
   | { kind: 'mcp'; item: StoreMcpServer };
 
 function formatDate(value?: string): string {
@@ -45,14 +45,24 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
 }
 
 /** Fetches the full catalog record: the card only carries the summary line. */
-function SkillDetailBody({ item, lang }: { item: StoreSkill; lang: StoreLang }) {
-  const [detail, setDetail] = useState<StoreSkillDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+function SkillDetailBody({
+  item,
+  initialDetail,
+  lang,
+}: {
+  item: StoreSkill;
+  /** Built-in skills arrive with their preview already, so the dialog stays offline. */
+  initialDetail?: StoreSkillDetail;
+  lang: StoreLang;
+}) {
+  const [detail, setDetail] = useState<StoreSkillDetail | null>(initialDetail ?? null);
+  const [loading, setLoading] = useState(initialDetail === undefined);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const t = (key: keyof typeof STORE_TEXT) => pick(lang, STORE_TEXT[key]);
 
   useEffect(() => {
+    if (initialDetail) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -69,7 +79,7 @@ function SkillDetailBody({ item, lang }: { item: StoreSkill; lang: StoreLang }) 
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [item.slug, attempt]);
+  }, [item.slug, attempt, initialDetail]);
 
   const updated = formatDate(detail?.updatedAt ?? item.updatedAt);
   return (
@@ -369,7 +379,7 @@ export function StoreDetailDialog({
 
       <div className="confirm-dialog-body store-detail-body">
         {target.kind === 'skill' ? (
-          <SkillDetailBody item={target.item} lang={lang} />
+          <SkillDetailBody item={target.item} initialDetail={target.detail} lang={lang} />
         ) : (
           <McpDetailBody item={target.item} lang={lang} />
         )}

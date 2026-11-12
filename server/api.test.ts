@@ -10,6 +10,8 @@ import { after, before, test } from 'node:test';
 import { createAppConfig, safeMatrix, selectAsset } from './app.ts';
 import { isInside } from './scan.ts';
 import type {
+  BuiltinInstallResponse,
+  BuiltinSkillReport,
   ConfigReport,
   MatrixResponse,
   PromptsReport,
@@ -876,4 +878,38 @@ test('the store searches and installs MCP servers from the registry', async () =
     server: { transport: 'stdio', command: 'npx' },
   });
   assert.equal(conflict, 409);
+});
+
+test('built-in skills list offline and install into the source', async () => {
+  const report = await call<BuiltinSkillReport>('/api/builtins');
+  assert.equal(report.sourcePath, join(home, '.agents', 'skills'));
+  const skillify = report.items.find((item) => item.slug === 'skillify');
+  assert.ok(skillify, 'skillify is bundled with the app');
+  assert.equal(skillify.builtin, true);
+  assert.equal(skillify.inSource, false);
+  assert.ok(skillify.files.some((file) => file.path === 'SKILL.md'));
+
+  const installed = await call<BuiltinInstallResponse>('/api/builtins/install', {
+    name: 'skillify',
+    agents: ['claude', 'codex'],
+  });
+  const source = join(home, '.agents', 'skills', 'skillify');
+  assert.equal(installed.name, 'skillify');
+  assert.equal(installed.path, source);
+  assert.deepEqual(
+    installed.links.map((link) => link.state),
+    ['linked', 'linked'],
+  );
+  assert.match(readFileSync(join(source, 'SKILL.md'), 'utf8'), /^---\nname: skillify/);
+  for (const agentDir of ['.claude', '.codex']) {
+    const link = join(home, agentDir, 'skills', 'skillify');
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+    assert.equal(realpathSync(link), realpathSync(source));
+  }
+  assert.ok(installed.matrix, 'the install answers with a fresh matrix');
+
+  const relisted = await call<BuiltinSkillReport>('/api/builtins');
+  assert.equal(relisted.items.find((item) => item.slug === 'skillify')?.inSource, true);
+  assert.equal(await postStatus('/api/builtins/install', { name: 'skillify' }), 409);
+  assert.equal(await postStatus('/api/builtins/install', { name: 'nope' }), 404);
 });

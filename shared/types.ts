@@ -605,6 +605,8 @@ export interface StoreSkill {
   updatedAt?: string;
   /** True when the source already holds a skill directory with this name (or the slug). */
   inSource: boolean;
+  /** True for a skill that ships inside the app instead of coming from the registry. */
+  builtin?: boolean;
 }
 
 /** `featured` is the registry's own ordering; `search` is an answer to a query. */
@@ -744,6 +746,28 @@ export interface StoreInstallReport {
 }
 
 export interface StoreInstallResponse extends StoreInstallReport {
+  matrix: MatrixResponse;
+}
+
+// ---- built-in skills ----
+
+/** A skill bundled with the app: the list carries the whole preview, so it works offline. */
+export interface BuiltinSkill extends StoreSkillDetail {
+  builtin: true;
+}
+
+export interface BuiltinSkillReport {
+  sourcePath: string;
+  items: BuiltinSkill[];
+}
+
+export interface BuiltinInstallRequest {
+  name: string;
+  /** Agents to link after copying; omitted means "copy only". */
+  agents?: string[];
+}
+
+export interface BuiltinInstallResponse extends StoreInstallReport {
   matrix: MatrixResponse;
 }
 

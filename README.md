@@ -13,11 +13,12 @@
 - **缓存清理** — 按白名单列出三个 agent 的会话记录与缓存（`~/.claude/projects`、`~/.codex/sessions` / `.tmp`、`~/.pi/agent/sessions` 等）各占多少、多老，可按 1/7/30/90 天或整体清理；清理只是移到回收站（同一卷上是 `rename`，不复制内容），可原样恢复，只有「清空回收站」才真正释放磁盘。
 - **写前自动快照** — 每次改文件前先备份，页面上可回滚到任意一次操作；还原本身也会先建安全快照，误还原可再撤销。
 
-- **商店** — 一个页面两个目录：skill 来自 [skillstore.io](https://skillstore.io)，MCP server 来自官方 [MCP Registry](https://registry.modelcontextprotocol.io)。搜索或浏览后一键把 skill 装进 `~/.agents/skills` 并建链，或把 MCP server 写进 `~/.agents/mcp/servers.json` 并同步到勾选的 agent。页面文案支持中文 / English / 双语；skill 安装前校验 manifest 的 sha256，包里没有 `SKILL.md`、校验不符或同名已存在都不动磁盘；MCP 安装前在弹窗里填写注册表要求的 API key 等必填项。
+- **商店** — 一个页面两个目录：skill 来自 [skillstore.io](https://skillstore.io)，MCP server 来自官方 [MCP Registry](https://registry.modelcontextprotocol.io)。搜索或浏览后一键把 skill 装进 `~/.agents/skills` 并建链，或把 MCP server 写进 `~/.agents/mcp/servers.json` 并同步到勾选的 agent。页面文案支持中文 / English / 双语；skill 安装前校验 manifest 的 sha256，包里没有 `SKILL.md`、校验不符或同名已存在都不动磁盘；MCP 安装前在弹窗里填写注册表要求的 API key 等必填项。Skills 第一页顶部另有「内置技能」栏：随应用分发的 skill（目前是 skillify，把一次会话整理成可复用的 `SKILL.md`）无需联网，预览与安装都走本地内容，写入前同样建快照。
 
 ### 商店页怎么用
 
 - 搜索框左边切 `Skills` / `MCP`。Skills 的源是 [skillstore.io](https://skillstore.io)：搜索框留空时列出它的目录（每行带分类、风险级别、许可证与质量分），输入关键词回车即搜；同名技能会排在前面。
+- `Skills` 第一页顶部是「内置技能」栏：原文打包在应用里（目前是 skillify，MIT），预览不请求注册表；安装把文件复制进 `~/.agents/skills/<name>` 再按勾选建链，弹窗里写明目的地与目标 agent。搜索时按名称 / 摘要 / 能力在本地匹配，第 2 页起不再重复出现。
 - 点卡片本身（不是「安装」）先打开预览：skill 会即时读取完整记录——完整描述、能力 / 限制 / 使用场景、文件结构、安全审查摘要、风险因素、仓库与下载收藏数；MCP server 列出全部安装方式、每个方式要填的变量以及仓库 / 官网。预览底部也能直接安装，键盘 `Enter` / 空格同样能打开。
 - Skills 一页 24 个，底部「上一页 / 下一页」带「第 N / M 页」（M 是注册表给出的总页数，热门目录 280 页左右）；换页会自动滚回列表顶部，换关键词或点「热门」会回到第 1 页。
 - MCP 的源是官方 Registry：它只按名称搜索且至少 3 个字符，没有总数、按游标翻页，所以底部只显示「第 N 页」。卡片上是 server 的反向域名名、标题、描述与可用的传输方式。

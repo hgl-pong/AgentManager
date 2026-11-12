@@ -187,6 +187,16 @@ export const STORE_TEXT = {
   detailWebsite: { zh: '官网', en: 'Website' },
   detailViews: { zh: '浏览', en: 'views' },
   cancel: { zh: '取消', en: 'Cancel' },
+
+  // Built-in skills: bundled with the app, so they install without the registry
+  builtinGroup: { zh: '内置技能', en: 'Built-in skills' },
+  builtinGroupHint: { zh: '随应用提供，无需联网', en: 'Ships with the app · no network' },
+  builtinBadge: { zh: '内置', en: 'Built-in' },
+  dialogBuiltin: { zh: '会把内置技能复制到源目录：', en: 'Copies the built-in skill into the source:' },
+  dialogBuiltinHint: {
+    zh: '内容随应用提供，写入前会自动建快照，可在快照面板里整体撤销。',
+    en: 'Ships with the app. A snapshot is taken first and can be restored later.',
+  },
 } satisfies Record<string, Bi>;
 
 export type StoreTextKey = keyof typeof STORE_TEXT;

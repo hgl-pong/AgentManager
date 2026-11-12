@@ -1321,6 +1321,86 @@ try {
     JSON.stringify(storeShape),
   );
 
+  const builtinShape = await page.eval(`
+    const card = document.querySelector('.builtin-card');
+    return {
+      heading: document.querySelector('.store-builtins-head h2')?.textContent ?? '',
+      hint: document.querySelector('.store-builtins-head .hint')?.textContent ?? '',
+      title: card?.querySelector('h3')?.textContent ?? '',
+      badge: card?.querySelector('.store-builtin-tag')?.textContent ?? '',
+      action: card?.querySelector('.builtin-action')?.textContent ?? '',
+      firstRegistry: document.querySelector('.store-card h3')?.textContent ?? '',
+    };
+  `);
+  check(
+    'the built-in shelf leads the store without displacing registry rows',
+    builtinShape.heading.includes('内置技能') &&
+      builtinShape.hint.includes('无需联网') &&
+      builtinShape.title === 'skillify' &&
+      builtinShape.badge.includes('内置') &&
+      builtinShape.action.includes('安装') &&
+      builtinShape.firstRegistry === 'latte',
+    JSON.stringify(builtinShape),
+  );
+
+  await page.eval(`document.querySelector('.builtin-card').click(); return true;`);
+  await page.waitForFn(`document.querySelector('dialog.store-detail-dialog')?.open === true`);
+  const builtinPreview = await page.eval(`
+    const node = document.querySelector('dialog.store-detail-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.querySelector('.store-detail-body')?.innerText ?? '',
+      files: [...node.querySelectorAll('.store-detail-files code')].map((code) => code.textContent),
+      actions: [...node.querySelectorAll('.confirm-dialog-actions button')].map((button) => button.textContent),
+    };
+  `);
+  check(
+    'a built-in previews its bundled files without waiting on the registry',
+    builtinPreview.title === 'skillify' &&
+      builtinPreview.files.includes('SKILL.md') &&
+      builtinPreview.body.includes('agentskills.io') &&
+      !builtinPreview.body.includes('正在读取完整介绍') &&
+      builtinPreview.actions.some((label) => label.includes('安装')),
+    JSON.stringify(builtinPreview),
+  );
+  await page.eval(
+    `[...document.querySelectorAll('dialog.store-detail-dialog .confirm-dialog-actions button')].find((b) => b.textContent.includes('安装')).click(); return true;`,
+  );
+  await page.waitForFn(`document.querySelector('dialog.confirm-dialog')?.open === true`);
+  const builtinDialog = await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      body: node.querySelector('.confirm-dialog-body')?.innerText ?? '',
+    };
+  `);
+  check(
+    'a built-in install names the copy destination and its agents',
+    builtinDialog.title.includes('skillify') &&
+      builtinDialog.body.includes(join(home, '.agents', 'skills', 'skillify')) &&
+      builtinDialog.body.includes('内置技能') &&
+      builtinDialog.body.includes('Codex'),
+    JSON.stringify(builtinDialog),
+  );
+  await page.eval(`
+    const node = document.querySelector('dialog.confirm-dialog');
+    [...node.querySelectorAll('button')].find((b) => b.textContent.includes('安装')).click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.store-page .notice')?.textContent.includes('已安装 skillify')`);
+  const builtinFile = join(home, '.agents', 'skills', 'skillify', 'SKILL.md');
+  check(
+    'the built-in install copies into the source and links every agent',
+    existsSync(builtinFile) &&
+      readFileSync(builtinFile, 'utf8').includes('agentskills.io') &&
+      ['claude', 'codex', 'pi'].every((agent) =>
+        existsSync(join(home, agent === 'pi' ? '.pi/agent/skills' : `.${agent}/skills`, 'skillify', 'SKILL.md')),
+      ),
+    builtinFile,
+  );
+  await page.waitForFn(`document.querySelector('.builtin-action')?.textContent.trim() === '源里已有'`);
+  check('an installed built-in is marked in the source', true);
+
   await page.eval(`
     const input = document.querySelector('.store-search input');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;

@@ -164,6 +164,15 @@ async function run(root, home, data, children) {
   if (assetBody.length < 10_000) throw new Error('embedded JavaScript asset looks truncated');
   console.log(`[verify-exe] 内嵌 UI 正常：${script[1]} (${Math.round(assetBody.length / 1024)} KB)`);
 
+  // Built-in skills travel in the same asset map, so the exe installs them without a checkout.
+  const builtins = await (await fetchWithRetry(`http://127.0.0.1:${port}/api/builtins`)).json();
+  const skillify = builtins.items?.find((item) => item.slug === 'skillify');
+  if (!skillify?.builtin) throw new Error('exe 没有带上 skillify 内置技能');
+  if (!skillify.files?.some((file) => file.path === 'SKILL.md')) {
+    throw new Error('内置技能缺少 SKILL.md');
+  }
+  console.log(`[verify-exe] 内置技能正常：${skillify.slug}（${skillify.files.length} 个文件）`);
+
   const state = JSON.parse(readFileSync(statePath, 'utf8'));
   if (state.port !== port || state.pid !== child.pid) throw new Error('runtime.json does not match the process');
 

@@ -16,6 +16,7 @@ import { build } from 'esbuild';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
+const BUILTIN_SKILLS = join(ROOT, 'builtin-skills');
 const BUILD = join(ROOT, '.build');
 // Everything is produced here first. `release/` is only touched after a fully successful build,
 // so a broken build (or a running exe) never destroys the current release or its data/ folder.
@@ -60,6 +61,18 @@ function collectAssets() {
     const absolute = join(DIST, relativePath);
     if (statSync(absolute).size > 8_000_000) throw new Error(`静态资源过大：${relativePath}`);
     assets[relativePath] = readFileSync(absolute).toString('base64');
+  }
+  return assets;
+}
+
+/** Built-in skills ship as extra asset entries, so the exe can install them offline. */
+function collectBuiltinSkills() {
+  if (!existsSync(BUILTIN_SKILLS)) return {};
+  const assets = {};
+  for (const relativePath of walk(BUILTIN_SKILLS).sort()) {
+    const absolute = join(BUILTIN_SKILLS, relativePath);
+    if (statSync(absolute).size > 8_000_000) throw new Error(`内置技能文件过大：${relativePath}`);
+    assets[`builtin-skills/${relativePath}`] = readFileSync(absolute).toString('base64');
   }
   return assets;
 }
@@ -110,14 +123,14 @@ async function main() {
   );
 
   console.log('[build-exe] 2/6 收集静态资源');
-  const assets = collectAssets();
+  const assets = { ...collectAssets(), ...collectBuiltinSkills() };
   // Only the staging folder is cleared up front; release/ keeps its data/ and logs.
   rmSync(STAGE, { recursive: true, force: true });
   mkdirSync(STAGE, { recursive: true });
   mkdirSync(BUILD, { recursive: true });
 
   console.log(
-    `[build-exe] 3/6 打包 ${Object.keys(assets).length} 个 UI 文件和服务端（esbuild target=${target}，构建用 Node ${process.versions.node}）`,
+    `[build-exe] 3/6 打包 ${Object.keys(assets).length} 个静态文件和服务端（esbuild target=${target}，构建用 Node ${process.versions.node}）`,
   );
   const bundle = join(BUILD, 'sea-main.cjs');
   await build({

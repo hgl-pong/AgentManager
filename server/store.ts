@@ -1157,61 +1157,48 @@ export interface StoreInstallInput {
 }
 
 /**
- * Downloads a skill into the single source, then optionally links it into agents.
- * One snapshot covers the new directory and every link, so a restore removes exactly what this
- * operation created.
+ * Stages, snapshots, moves and links an already-supplied skill. The registry install and the
+ * built-in install share it, so a failed link rolls the whole operation back either way.
  */
-export async function installStoreSkill(input: StoreInstallInput): Promise<StoreInstallReport> {
-  const slug = assertSegment(String(input.request.slug ?? ''), 'slug', SLUG_PATTERN);
-  const owner = String(input.request.owner ?? '').trim();
-  const base = storeBaseUrl(input.baseUrl);
+export interface SkillEntriesInstallInput {
+  source: string;
+  snapshotRoot: string;
+  tempRoot: string;
+  /** Already resolved and validated against the configured agents. */
+  agents: AgentSpec[];
+  name: string;
+  /** Snapshot label, e.g. `install acme/pdf-tools`. */
+  label: string;
+  entries: { name: string; data: Buffer }[];
+}
 
-  // Resolve the agents first: a typo in the request should fail before any download.
-  const requested = [...new Set((input.request.agents ?? []).map(String))];
-  const resolved: AgentSpec[] = [];
-  for (const key of requested) {
-    const agent = input.agents.find((candidate) => candidate.key === key);
-    if (!agent) throw new AppError(400, `未知的 agent：${key}`);
-    resolved.push(agent);
-  }
-
-  const artifact = await fetchManifest({ baseUrl: base, slug, fetchImpl: input.fetchImpl ?? fetch });
-  const name = skillName(String(input.request.name ?? '').trim() || artifact.name);
-
-  const destination = join(input.source, name);
+export function installSkillEntries(input: SkillEntriesInstallInput): StoreInstallReport {
+  if (input.entries.length === 0) throw new AppError(400, `安装包是空的（${input.name}）`);
+  const destination = join(input.source, input.name);
   if (lstatOrNull(destination) || existsSync(destination)) {
-    throw new AppError(409, `源里已经有 ${name}，先移除它（或换个名字）再安装`);
+    throw new AppError(409, `源里已经有 ${input.name}，先移除它（或换个名字）再安装`);
   }
 
   // An existing entry is never replaced: that decision belongs to the skills page.
-  const targets = resolved.map((agent) => ({ agent, skip: lstatOrNull(join(agent.root, name)) !== null }));
-
-  const buffer = await downloadArtifact({
-    artifact,
-    slug,
-    fetchImpl: input.fetchImpl ?? fetch,
-  });
-  const entries = unzip(buffer, {
-    maxEntries: MAX_ENTRIES,
-    maxFileBytes: MAX_FILE_BYTES,
-    maxTotalBytes: MAX_TOTAL_BYTES,
-  });
-  if (entries.length === 0) throw new AppError(400, `压缩包是空的（${slug}）`);
+  const targets = input.agents.map((agent) => ({
+    agent,
+    skip: lstatOrNull(join(agent.root, input.name)) !== null,
+  }));
 
   mkdirSync(input.tempRoot, { recursive: true });
   const staging = mkdtempSync(join(input.tempRoot, 'store-'));
   try {
-    const written = extractZipEntries(entries, staging);
+    const written = extractZipEntries(input.entries, staging);
     if (!hasSkillFile(staging)) {
-      throw new AppError(400, `压缩包里没有 SKILL.md，不是可安装的 skill（${slug}）`);
+      throw new AppError(400, `安装包里没有 SKILL.md，不是可安装的 skill（${input.name}）`);
     }
 
     const snapshot = createSnapshot(
       input.snapshotRoot,
-      `install ${owner === '' ? slug : `${owner}/${name}`}`,
+      input.label,
       [],
-      [destination, ...targets.filter((target) => !target.skip).map((target) => join(target.agent.root, name))],
-      new Date(input.now?.() ?? Date.now()),
+      [destination, ...targets.filter((target) => !target.skip).map((target) => join(target.agent.root, input.name))],
+      new Date(),
     );
 
     try {
@@ -1228,7 +1215,7 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
     const createdLinks: string[] = [];
 
     for (const { agent, skip } of targets) {
-      const linkPath = join(agent.root, name);
+      const linkPath = join(agent.root, input.name);
       if (skip) {
         links.push({
           agent: agent.key,
@@ -1264,12 +1251,12 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
     const linkedLabels = links.filter((link) => link.state === 'linked').map((link) => link.label);
     const message =
       linkedLabels.length > 0
-        ? `已安装 ${name} 到源，并链接到 ${linkedLabels.join('、')}`
-        : `已安装 ${name} 到源`;
+        ? `已安装 ${input.name} 到源，并链接到 ${linkedLabels.join('、')}`
+        : `已安装 ${input.name} 到源`;
 
     return {
       message,
-      name,
+      name: input.name,
       path: destination,
       files: written.files,
       bytes: written.bytes,
@@ -1280,6 +1267,56 @@ export async function installStoreSkill(input: StoreInstallInput): Promise<Store
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
+}
+
+/**
+ * Downloads a skill into the single source, then optionally links it into agents.
+ * One snapshot covers the new directory and every link, so a restore removes exactly what this
+ * operation created.
+ */
+export async function installStoreSkill(input: StoreInstallInput): Promise<StoreInstallReport> {
+  const slug = assertSegment(String(input.request.slug ?? ''), 'slug', SLUG_PATTERN);
+  const owner = String(input.request.owner ?? '').trim();
+  const base = storeBaseUrl(input.baseUrl);
+
+  // Resolve the agents first: a typo in the request should fail before any download.
+  const requested = [...new Set((input.request.agents ?? []).map(String))];
+  const resolved: AgentSpec[] = [];
+  for (const key of requested) {
+    const agent = input.agents.find((candidate) => candidate.key === key);
+    if (!agent) throw new AppError(400, `未知的 agent：${key}`);
+    resolved.push(agent);
+  }
+
+  const artifact = await fetchManifest({ baseUrl: base, slug, fetchImpl: input.fetchImpl ?? fetch });
+  const name = skillName(String(input.request.name ?? '').trim() || artifact.name);
+
+  const destination = join(input.source, name);
+  if (lstatOrNull(destination) || existsSync(destination)) {
+    throw new AppError(409, `源里已经有 ${name}，先移除它（或换个名字）再安装`);
+  }
+
+  const buffer = await downloadArtifact({
+    artifact,
+    slug,
+    fetchImpl: input.fetchImpl ?? fetch,
+  });
+  const entries = unzip(buffer, {
+    maxEntries: MAX_ENTRIES,
+    maxFileBytes: MAX_FILE_BYTES,
+    maxTotalBytes: MAX_TOTAL_BYTES,
+  });
+  if (entries.length === 0) throw new AppError(400, `压缩包是空的（${slug}）`);
+
+  return installSkillEntries({
+    source: input.source,
+    snapshotRoot: input.snapshotRoot,
+    tempRoot: input.tempRoot,
+    agents: resolved,
+    name,
+    label: `install ${owner === '' ? slug : `${owner}/${name}`}`,
+    entries,
+  });
 }
 
 // ---- installing an MCP server ----
