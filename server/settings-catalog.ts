@@ -71,9 +71,10 @@ export const SETTINGS_CATALOG: SettingsCatalog = {
                 "low",
                 "medium",
                 "high",
-                "xhigh"
+                "xhigh",
+                "max"
               ],
-              "description": "跨会话保存自适应推理强度，可选 low、medium、high 或 xhigh；max 和 ultracode 仅限会话内使用，不能写入设置文件，会话内可通过 CLAUDE_CODE_EFFORT_LEVEL 环境变量或 /effort 设置 max。",
+              "description": "跨会话保存自适应推理强度。low、medium、high、xhigh 直接写入 effortLevel；max 只能通过 CLAUDE_CODE_EFFORT_LEVEL 环境变量生效（Claude Code 会忽略写入 effortLevel 的 max），因此选择 max 时本应用改写为 settings.env.CLAUDE_CODE_EFFORT_LEVEL = max。ultracode（xhigh + 动态工作流）仅限会话内使用。",
               "group": "模型与推理"
             },
             {

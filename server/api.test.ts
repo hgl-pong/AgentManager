@@ -684,7 +684,7 @@ test('settings validation answers 400 for known fields but keeps unknown keys', 
     { model: 1 },
     { fastMode: 'yes' },
     { cleanupPeriodDays: 0 },
-    { effortLevel: 'max' },
+    { effortLevel: 'bogus' },
     { availableModels: [1] },
     { env: { A: 1 } },
   ];

@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 import { AppError } from '../shared/types.ts';
+import { applyClaudeEffort, CLAUDE_SETTINGS_FILE_ID, presentClaudeEffort } from './claude-effort.ts';
 import { SETTINGS_CATALOG } from './settings-catalog.ts';
 import { createSnapshot, markSnapshotFailed } from './snapshot.ts';
 
@@ -206,6 +207,8 @@ function readFileState(file: SettingsFileDescriptor): SettingsFileState {
       state.data = toJsonValue(mapping);
       state.text = serialize(file.format, mapping);
     } else {
+      // A `max` effort only works through the env var; show it as the effortLevel the UI edits.
+      if (file.id === CLAUDE_SETTINGS_FILE_ID) presentClaudeEffort(root);
       state.data = toJsonValue(root);
       // Keep dates as TOML dates so canonical text can round-trip them; `data` is JSON-safe.
       state.text = serialize(file.format, root);
@@ -495,8 +498,11 @@ export function saveSettings(input: SettingsSaveInput): SettingsSaveResult {
       const mapping = assertObject(root[file.mcpKey], `${file.mcpKey}`);
       validateMcpMap(mapping, file.mcpKey);
     }
+    // `max` is only honoured through the env var, so persist the editor's selection in that shape.
+    const effortRewritten = file.id === CLAUDE_SETTINGS_FILE_ID ? applyClaudeEffort(root) : false;
     // Raw text keeps the author's formatting; structured data gets a canonical serialization.
-    nextText = suppliedText === undefined ? serializeStructured(file, root) : ensureTrailingNewline(suppliedText);
+    nextText =
+      suppliedText === undefined || effortRewritten ? serializeStructured(file, root) : ensureTrailingNewline(suppliedText);
   }
 
   let snapshot: SnapshotManifest;

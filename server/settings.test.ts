@@ -193,7 +193,7 @@ test('known fields are validated by type, enum and bounds while unknown keys pas
     { cleanupPeriodDays: 1.5 },
     { cleanupPeriodDays: 0 },
     { skillListingBudgetFraction: 2 },
-    { effortLevel: 'max' },
+    { effortLevel: 'bogus' },
     { availableModels: [1] },
     { env: { A: 1 } },
   ];
@@ -219,6 +219,25 @@ test('known fields are validated by type, enum and bounds while unknown keys pas
   const piEtag = stateOf('pi-settings').etag;
   expectStatus(400, () => save('pi-settings', { data: { warnings: { anthropicExtraUsage: 'yes' } } }, piEtag));
   save('pi-settings', { data: { warnings: { anthropicExtraUsage: true } } }, piEtag);
+});
+
+test('a persisted max effort is stored as CLAUDE_CODE_EFFORT_LEVEL and shown as max', () => {
+  const path = descriptor('claude-settings').path;
+  writeFileSync(path, '{"effortLevel":"xhigh","env":{"KEEP":"1"}}\n');
+
+  const saved = save('claude-settings', { data: { effortLevel: 'max', env: { KEEP: '1' } } });
+  const written = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  assert.deepEqual(written, { env: { KEEP: '1', CLAUDE_CODE_EFFORT_LEVEL: 'max' } });
+  // The reader owes the editor the level back, not the env var it is stored in.
+  assert.deepEqual(saved.file.data, { effortLevel: 'max', env: { KEEP: '1' } });
+
+  const back = save('claude-settings', { data: { effortLevel: 'high', env: { KEEP: '1' } } });
+  assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { effortLevel: 'high', env: { KEEP: '1' } });
+  assert.deepEqual(back.file.data, { effortLevel: 'high', env: { KEEP: '1' } });
+
+  // Clearing the control drops the env var instead of leaving a stale max behind.
+  save('claude-settings', { data: { env: { KEEP: '1' } } });
+  assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { env: { KEEP: '1' } });
 });
 
 test('MCP servers are validated for transport, args and string maps', () => {
@@ -300,6 +319,14 @@ test('raw text mode parses before writing and leaves invalid content untouched',
   etag = saved.file.etag;
   expectStatus(400, () => save('claude-settings', { text: '{"model":42}' }, etag));
   assert.equal(readFileSync(claudePath, 'utf8'), '{"model":"raw","custom":true}\n');
+
+  // A raw draft asking for max is rewritten into the env var Claude Code actually honours.
+  const rewritten = save('claude-settings', { text: '{"model":"raw","effortLevel":"max"}' }, etag);
+  assert.equal(
+    readFileSync(claudePath, 'utf8'),
+    `${JSON.stringify({ model: 'raw', env: { CLAUDE_CODE_EFFORT_LEVEL: 'max' } }, null, 2)}\n`,
+  );
+  assert.deepEqual(rewritten.file.data, { model: 'raw', effortLevel: 'max' });
 
   const codexPath = descriptor('codex-config').path;
   writeFileSync(codexPath, 'model = "old"\n');

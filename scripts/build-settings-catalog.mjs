@@ -158,6 +158,13 @@ const PI_GROUPS = {
   更新与遥测: ['collapseChangelog', 'enableInstallTelemetry', 'enableAnalytics', 'warnings'],
 };
 
+// Claude Code ignores `max` in the persisted effortLevel key and only honours it through the
+// CLAUDE_CODE_EFFORT_LEVEL env var. The server rewrites a chosen `max` into that env var, so the
+// editor can offer every level the CLI accepts.
+const EXTRA_ENUM_VALUES = {
+  'claude:effortLevel': ['max'],
+};
+
 const AGENTS = [
   {
     key: 'claude',
@@ -368,6 +375,10 @@ function buildAgent(spec) {
     const forceJson = jsonKeys.has(key);
     const field = simplify(node, root, 0, key, forceJson);
     field.group = groupFor.get(key) ?? '其他';
+    const extra = EXTRA_ENUM_VALUES[`${spec.key}:${field.path}`];
+    if (extra && field.enum) {
+      field.enum = [...field.enum, ...extra.filter((value) => !field.enum.includes(value))];
+    }
     if (MANAGED_ONLY.has(key)) field.managedOnly = true;
     if (EXECUTABLE.has(key)) field.executable = true;
     if (spec.key === 'codex' && key === 'mcp_servers') field.hidden = true;

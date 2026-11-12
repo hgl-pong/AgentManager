@@ -4,7 +4,7 @@
   "claude:availableModels": "限制用户可以选择的模型；在多个设置层级（用户、项目等）中定义时，数组会合并并去重。",
   "claude:modelOverrides": "将 Anthropic 模型 ID 映射为提供商专用的模型 ID，例如 Bedrock 推理配置文件 ARN、Vertex AI 版本名或 Foundry 部署名；未知键会被忽略。",
   "claude:modelOverrides.*": "该键对应的提供商专用模型 ID。",
-  "claude:effortLevel": "跨会话保存自适应推理强度，可选 low、medium、high 或 xhigh；max 和 ultracode 仅限会话内使用，不能写入设置文件，会话内可通过 CLAUDE_CODE_EFFORT_LEVEL 环境变量或 /effort 设置 max。",
+  "claude:effortLevel": "跨会话保存自适应推理强度。low、medium、high、xhigh 直接写入 effortLevel；max 只能通过 CLAUDE_CODE_EFFORT_LEVEL 环境变量生效（Claude Code 会忽略写入 effortLevel 的 max），因此选择 max 时本应用改写为 settings.env.CLAUDE_CODE_EFFORT_LEVEL = max。ultracode（xhigh + 动态工作流）仅限会话内使用。",
   "claude:fastMode": "启用快速模式，默认使用 Claude Opus 5 以获得更快的输出，每个 token 的费用更高但不会降级到更小的模型；需开启额外用量，可用 /fast 命令切换。",
   "claude:fastModePerSessionOptIn": "要求每个会话单独开启快速模式；设为 true 时快速模式不跨会话保留，用户需在每个会话中用 /fast 重新开启，便于控制成本。",
   "claude:outputStyle": "控制助手回复的输出风格，内置风格有 default、Proactive、Explanatory 和 Learning；自定义风格可放在 ~/.claude/output-styles/ 或 .claude/output-styles/ 目录中。",
