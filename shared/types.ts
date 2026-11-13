@@ -411,6 +411,45 @@ export interface ProviderModelsReport extends ModelsReport {
   provider: ProviderSummary | null;
 }
 
+// ---- apply a provider model to agent configs ----
+
+export interface ModelTargetFile {
+  label: string;
+  path: string;
+}
+
+export interface ModelTargetAgent {
+  key: string;
+  label: string;
+  detected: boolean;
+  files: ModelTargetFile[];
+}
+
+export interface ModelTargetsReport {
+  agents: ModelTargetAgent[];
+}
+
+export interface ModelApplyRequest {
+  modelId: string;
+  agents: string[];
+}
+
+export interface ModelApplyAgentSummary {
+  key: string;
+  label: string;
+  files: string[];
+  snapshotIds: string[];
+  /** Keys or sections written, for the confirmation/result copy; never values. */
+  writes: string[];
+}
+
+export interface ModelApplyResponse {
+  message: string;
+  model: { id: string; name: string; providerHost: string };
+  agents: ModelApplyAgentSummary[];
+  snapshotIds: string[];
+}
+
 // ---- MCP management ----
 
 export type McpTransport = 'stdio' | 'http' | 'sse';

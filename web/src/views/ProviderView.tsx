@@ -3,11 +3,15 @@ import type { FormEvent } from 'react';
 
 import { api, errorMessage, isAbortError } from '../api.ts';
 import type {
+  ModelInfo,
+  ModelTargetAgent,
   ProviderModelsReport,
   ProvidersReport,
   ProviderSummary,
 } from '../../../shared/types.ts';
+import { ModelApplyDialog } from '../components/ModelApplyDialog.tsx';
 import { ModelCatalogTable } from '../components/ModelCatalogTable.tsx';
+import { ModelImportDialog } from '../components/ModelImportDialog.tsx';
 import { useConfirmDialog } from '../lib/confirm.tsx';
 
 interface ProviderForm {
@@ -25,12 +29,17 @@ function providerOf(report: ProvidersReport | null, id: string | null): Provider
 export function ProviderView({
   version,
   onDirtyChange,
+  onSnapshotsChanged,
 }: {
   version: number;
   onDirtyChange: (dirty: boolean) => void;
+  onSnapshotsChanged: () => void;
 }) {
   const [report, setReport] = useState<ProvidersReport | null>(null);
   const [models, setModels] = useState<ProviderModelsReport | null>(null);
+  const [targets, setTargets] = useState<ModelTargetAgent[] | null>(null);
+  const [applying, setApplying] = useState<ModelInfo | null>(null);
+  const [importing, setImporting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<ProviderForm>(EMPTY_FORM);
@@ -97,6 +106,14 @@ export function ProviderView({
         const next = await api.providers(signal);
         if (seq !== seqRef.current || signal?.aborted) return;
         applyReport(next);
+        void api
+          .modelTargets(signal)
+          .then((report) => {
+            if (!signal?.aborted && seq === seqRef.current) setTargets(report.agents);
+          })
+          .catch(() => {
+            if (!signal?.aborted && seq === seqRef.current) setTargets([]);
+          });
         if (next.activeId) await loadModels(false, signal);
         else setModels(null);
       } catch (reason) {
@@ -144,6 +161,7 @@ export function ProviderView({
           setNotice(result.message);
           setFormError(null);
           setModels(null);
+          onSnapshotsChanged();
           await loadModels(true);
         })
         .catch((reason: unknown) => setError(errorMessage(reason)))
@@ -206,6 +224,7 @@ export function ProviderView({
         applyReport(result.report);
         setNotice(result.message);
         setModels(null);
+        onSnapshotsChanged();
         await loadModels(true);
       })
       .catch((reason: unknown) => setFormError(errorMessage(reason)))
@@ -236,12 +255,21 @@ export function ProviderView({
           applyReport(result.report);
           setNotice(result.message);
           setModels(null);
+          onSnapshotsChanged();
           if (result.report.activeId) await loadModels(true);
         } finally {
           setBusy(null);
         }
       },
     });
+  }
+
+  /** Open the import dialog: pick a default model, preview, then write to all agents. */
+  function importAll() {
+    if (!selected || !models || models.models.length === 0 || !targets || dirty) return;
+    setNotice(null);
+    setError(null);
+    setImporting(true);
   }
 
   const filtered = useMemo(() => {
@@ -408,6 +436,21 @@ export function ProviderView({
                 >
                   {modelsLoading ? '读取中…' : '读取模型'}
                 </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!selected || !models || models.models.length === 0 || dirty || !targets || targets.length === 0}
+                  title={
+                    dirty
+                      ? '先保存 provider 修改'
+                      : !models || models.models.length === 0
+                        ? '先读取模型'
+                        : `把全部 ${models.models.length} 个模型写入所有 agent`
+                  }
+                  onClick={() => void importAll()}
+                >
+                  导入全部
+                </button>
               </div>
             </header>
 
@@ -435,12 +478,59 @@ export function ProviderView({
             )}
             {!selected && <p className="muted">先保存并激活一个 provider。</p>}
 
+            {dirty && selected && (
+              <p className="hint">保存 provider 修改后可以把模型应用到 agent。</p>
+            )}
+
             {selected && models && models.models.length > 0 && (
-              <ModelCatalogTable models={filtered} />
+              <ModelCatalogTable
+                models={filtered}
+                onApply={
+                  !dirty && targets && targets.length > 0
+                    ? (model) => setApplying(model)
+                    : undefined
+                }
+              />
             )}
           </section>
         </div>
       </div>
+
+      {applying && selected && targets && (
+        <ModelApplyDialog
+          model={applying}
+          provider={selected}
+          targets={targets}
+          onClose={() => setApplying(null)}
+          onApplied={(result) => {
+            setApplying(null);
+            setNotice(
+              result.snapshotIds.length > 0
+                ? `${result.message} · 快照 ${result.snapshotIds.join('、')}`
+                : result.message,
+            );
+            onSnapshotsChanged();
+          }}
+        />
+      )}
+
+      {importing && selected && models && targets && (
+        <ModelImportDialog
+          models={models.models}
+          provider={selected}
+          targets={targets}
+          onClose={() => setImporting(false)}
+          onApplied={(result) => {
+            setImporting(false);
+            setNotice(
+              result.snapshotIds.length > 0
+                ? `${result.message} · 快照 ${result.snapshotIds.join('、')}`
+                : result.message,
+            );
+            onSnapshotsChanged();
+          }}
+        />
+      )}
     </section>
   );
 }

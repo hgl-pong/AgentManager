@@ -12,6 +12,9 @@ import type {
   HookMatrixReport,
   MatrixResponse,
   McpActionRequest,
+  ModelApplyRequest,
+  ModelApplyResponse,
+  ModelTargetsReport,
   McpActionResponse,
   McpMatrixReport,
   OpenResponse,
@@ -98,6 +101,8 @@ export const api = {
   matrix: (signal?: AbortSignal) => request<MatrixResponse>('/api/matrix', { signal }),
   skill: (body: SkillActionRequest) => request<SkillActionResponse>('/api/skills', post(body)),
   prompts: (signal?: AbortSignal) => request<PromptsReport>('/api/prompts', { signal }),
+  promptTemplate: (signal?: AbortSignal) =>
+    request<{ content: string }>('/api/prompts/template', { signal }),
   promptAction: (body: PromptActionRequest) => request<PromptActionReport>('/api/prompts', post(body)),
   promptContent: (signal?: AbortSignal) => request<PromptSourceContent>('/api/prompts/content', { signal }),
   savePrompt: (content: string, etag: string) =>
@@ -164,4 +169,7 @@ export const api = {
     const qs = refresh ? '?refresh=1' : '';
     return request<ProviderModelsReport>(`/api/providers/models${qs}`, { signal });
   },
+  modelTargets: (signal?: AbortSignal) => request<ModelTargetsReport>('/api/model/targets', { signal }),
+  applyModel: (body: ModelApplyRequest) =>
+    request<ModelApplyResponse>('/api/model/apply', post(body)),
 };

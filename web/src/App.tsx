@@ -350,6 +350,10 @@ export default function App() {
     setSnapshotVersion((current) => current + 1);
   }, []);
 
+  const snapshotsChanged = useCallback(() => {
+    setSnapshotVersion((current) => current + 1);
+  }, []);
+
   const settingsSaved = useCallback(() => {
     setSnapshotVersion((current) => current + 1);
     void loadMeta();
@@ -529,7 +533,11 @@ export default function App() {
           {tab === 'mcp' && <McpView version={dataVersion} onChanged={changed} />}
           {tab === 'hooks' && <HooksView version={dataVersion} onChanged={changed} />}
           {tab === 'provider' && (
-            <ProviderView version={dataVersion} onDirtyChange={markProviderDirty} />
+            <ProviderView
+              version={dataVersion}
+              onDirtyChange={markProviderDirty}
+              onSnapshotsChanged={snapshotsChanged}
+            />
           )}
           {tab === 'prompts' && (
             <PromptsView

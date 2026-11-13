@@ -1,0 +1,16 @@
+{
+  "output_dir": "Docs/_data",
+  "roots": [
+    "/Game/YourContent"
+  ],
+  "deep_classes": [
+    "Blueprint",
+    "WidgetBlueprint",
+    "AnimBlueprint",
+    "Material",
+    "MaterialFunction",
+    "MaterialInstanceConstant",
+    "DataTable"
+  ],
+  "limit": 0
+}

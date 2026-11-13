@@ -244,7 +244,18 @@ try {
       }
       if (tab === 'provider') {
         await waitFn(`document.querySelector('.model-catalog-row')`, 300);
+        await waitFn(`document.querySelector('.model-catalog-apply button')`, 300);
         await sleep(300);
+        await evaluate(`
+          const row = [...document.querySelectorAll('.model-catalog-row')].find((r) => r.innerText.includes('gw/alpha-large'));
+          row?.querySelector('.model-catalog-apply button')?.click();
+          return true;
+        `);
+        await waitFn(`document.querySelector('dialog.model-apply-dialog')?.open === true`, 300);
+        await sleep(300);
+        await shot(`${theme}-provider-apply`);
+        await evaluate(`document.querySelector('dialog.model-apply-dialog').dispatchEvent(new Event('cancel', {cancelable:true})); return true;`);
+        await sleep(200);
       }
       if (tab === 'store') {
         // The registry answers over the network, so wait for rows instead of a fixed sleep.

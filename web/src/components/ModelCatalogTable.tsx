@@ -8,7 +8,13 @@ function formatTokens(value: number | undefined): string {
 }
 
 /** The model list shared by the provider page; capability tags stay data, not decoration. */
-export function ModelCatalogTable({ models }: { models: ModelInfo[] }) {
+export function ModelCatalogTable({
+  models,
+  onApply,
+}: {
+  models: ModelInfo[];
+  onApply?: (model: ModelInfo) => void;
+}) {
   return (
     <div className="models-catalog-scroll">
       <div className="table-wrap">
@@ -20,6 +26,7 @@ export function ModelCatalogTable({ models }: { models: ModelInfo[] }) {
             <col className="col-num" />
             <col className="col-effort" />
             <col className="col-caps" />
+            {onApply && <col className="col-apply" />}
           </colgroup>
           <thead>
             <tr>
@@ -29,6 +36,7 @@ export function ModelCatalogTable({ models }: { models: ModelInfo[] }) {
               <th scope="col">输出</th>
               <th scope="col">推理强度</th>
               <th scope="col">其他能力</th>
+              {onApply && <th scope="col">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -70,11 +78,18 @@ export function ModelCatalogTable({ models }: { models: ModelInfo[] }) {
                     )}
                   </div>
                 </td>
+                {onApply && (
+                  <td className="model-catalog-apply">
+                    <button type="button" className="secondary" onClick={() => onApply(model)}>
+                      应用
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {models.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={onApply ? 7 : 6} className="muted">
                   没有匹配的模型。
                 </td>
               </tr>

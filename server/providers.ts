@@ -30,7 +30,9 @@ interface ProviderStore {
 const EMPTY_STORE: ProviderStore = { activeId: null, providers: [] };
 
 function normalizeBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, '');
+  let trimmed = value.trim().replace(/\/+$/, '');
+  // The models URL helper accepts a full /models URL, but the agent packages need the API base.
+  if (/\/models$/i.test(trimmed)) trimmed = trimmed.slice(0, -'/models'.length).replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(trimmed)) throw new AppError(400, 'Base URL 必须是 http(s) URL');
   try {
     new URL(trimmed);
@@ -54,9 +56,10 @@ function asProvider(value: unknown): StoredProvider | null {
   if (typeof record.id !== 'string' || record.id === '') return null;
   if (typeof record.baseUrl !== 'string' || record.baseUrl === '') return null;
   if (typeof record.apiKey !== 'string') return null;
+  const baseUrl = record.baseUrl.replace(/\/models$/i, '').replace(/\/+$/, '');
   return {
     id: record.id,
-    baseUrl: record.baseUrl,
+    baseUrl,
     apiKey: record.apiKey,
     createdAt: typeof record.createdAt === 'string' ? record.createdAt : new Date(0).toISOString(),
     updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date(0).toISOString(),
@@ -272,5 +275,24 @@ export async function getProviderModels(
 /** Checks whether the provider file currently names an active provider, without exposing keys. */
 export function hasProvider(path: string): boolean {
   return activeProvider(readStore(path)) !== null;
+}
+
+export interface ActiveProviderInfo {
+  id: string;
+  baseUrl: string;
+  apiKey: string;
+  host: string;
+}
+
+/** Server-side only: the active provider including its key, for writing agent packages. */
+export function activeProviderInfo(path: string): ActiveProviderInfo | null {
+  const provider = activeProvider(readStore(path));
+  if (!provider) return null;
+  return {
+    id: provider.id,
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey,
+    host: hostOf(provider.baseUrl),
+  };
 }
 

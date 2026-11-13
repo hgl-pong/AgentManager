@@ -385,6 +385,40 @@ export function PromptsView({
                   从 CLAUDE.md 初始化
                 </button>
               )}
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy !== null}
+                onClick={async () => {
+                  if (dirty) {
+                    const proceed = await ask({
+                      title: '载入内置模板',
+                      danger: true,
+                      message: '编辑器里有未保存的修改，载入模板会覆盖这些修改。保存前的原正文仍在磁盘上。',
+                      confirmLabel: '覆盖草稿',
+                    });
+                    if (!proceed) return;
+                  }
+                  setNotice(null);
+                  setError(null);
+                  try {
+                    const result = await api.promptTemplate();
+                    if (result.content) {
+                      contentRef.current = result.content;
+                      setContent(result.content);
+                      setNotice(
+                        report.source.exists
+                          ? '已载入内置模板。点「保存并生效」覆盖磁盘上的正文（保存前自动建快照）。'
+                          : '已载入内置模板（含 Orca worker 分派与 pi review 策略）。点「保存并生效」建立单一源。',
+                      );
+                    }
+                  } catch (reason) {
+                    setError(errorMessage(reason));
+                  }
+                }}
+              >
+                {report.source.exists ? '重置为内置模板' : '载入内置模板'}
+              </button>
               <button type="button" className="primary" onClick={save} disabled={!dirty || busy !== null}>
                 {busy === 'save' ? '保存中…' : '保存并生效'}
               </button>

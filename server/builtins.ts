@@ -78,6 +78,29 @@ const BUILTINS: BuiltinSpec[] = [
       { title: '分析崩溃与转储', description: '用 cdb 捕获异常记录和故障栈，或在 dump 上做上下文恢复与 `!analyze`。' },
     ],
   },
+  {
+    slug: 'ue-asset-deep-dump',
+    owner: 'heguoling',
+    summary:
+      '用只读 Python commandlet 深度解析 Unreal Engine 内容包：蓝图图/节点/pin/连线、材质表达式、MaterialInstance 覆写、DataTable 行、依赖与 tags，产出 JSON 索引、校验报告、节点图 SVG 与 Markdown/HTML 文档。',
+    version: '1.0.0',
+    license: 'MIT',
+    repository: '',
+    capabilities: [
+      '定位 .uproject、引擎与内容根，按 EngineAssociation 自动探测 UnrealEditor-Cmd',
+      '运行只读 Python commandlet 导出全部资产的路径、类、tags、依赖',
+      '蓝图图/节点/pin/连线、材质表达式、MI 覆写、DataTable 行的结构化 JSON',
+      '结构校验（硬错误为 0），节点图 SVG、材质 SVG 与单文件 HTML 文档',
+    ],
+    limitations: [
+      '需要本地安装 Unreal Engine 并能运行 UnrealEditor-Cmd（PythonScriptPlugin）',
+      '只读资产，不修改内容；推断性结论必须标注',
+    ],
+    useCases: [
+      { title: '逆向纯资产插件', description: '没有 C++ 源码的内容包，从资产结构还原模块设计与节点逻辑。' },
+      { title: '生成可复核文档', description: '每条结论都能追到资产路径 + 图/节点/表达式/参数。' },
+    ],
+  },
 ];
 
 interface BuiltinFile {

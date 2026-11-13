@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
@@ -11,7 +11,7 @@ import { scanConfig } from './config.ts';
 import { alignPrompt, initPrompts, readPromptSource, savePromptSource, scanPrompts } from './prompts.ts';
 import { buildMcpReport, listMcpSourceNames, runMcpAction } from './mcp.ts';
 import { buildHooksReport, runHooksAction } from './hooks.ts';
-import { getModelsReport } from './models.ts';
+import { applyModelPackage, modelTargets } from './model-package.ts';
 import {
   activateProvider,
   getProviderModels,
@@ -47,6 +47,7 @@ import type {
   PromptTargetSpec,
   ProviderActionRequest,
   ProviderSaveRequest,
+  ModelApplyRequest,
   SettingsFileDescriptor,
   SettingsSaveRequest,
   SkillActionRequest,
@@ -88,6 +89,7 @@ export interface AppConfig {
   mcpSource: string;
   hooksSource: string;
   providerSource: string;
+  piModelsPath: string;
   codexHooks: string;
   /** Known cache/session locations the cache page may move into the recycle bin. */
   cacheTargets: CacheTargetSpec[];
@@ -181,6 +183,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
   const mcpSource = join(home, '.agents', 'mcp', 'servers.json');
   const hooksSource = join(home, '.agents', 'hooks', 'hooks.json');
   const providerSource = join(home, '.agents', 'providers.json');
+  const piModelsPath = join(home, '.pi', 'agent', 'models.json');
   const codexHooks = join(home, '.codex', 'hooks.json');
   const cacheRecycleRoot = resolve(
     process.env.AGENT_MANAGER_CACHE_RECYCLE ?? join(dataDir, 'recycle'),
@@ -223,6 +226,7 @@ export function createAppConfig(input: AppConfigInput): AppConfig {
     mcpSource,
     hooksSource,
     providerSource,
+    piModelsPath,
     codexHooks,
     cacheTargets: cacheSpecs,
     cacheRecycleRoot,
@@ -282,6 +286,7 @@ function restoreRoots(config: AppConfig): string[] {
     config.mcpSource,
     config.hooksSource,
     config.providerSource,
+    config.piModelsPath,
     config.codexHooks,
   ];
 }
@@ -511,6 +516,22 @@ async function handleRequest(
     return;
   }
 
+  if (pathname === '/api/prompts/template' && request.method === 'GET') {
+    let template = '';
+    const assetKey = 'builtin-prompts/global.md';
+    if (config.assets?.[assetKey]) {
+      template = Buffer.from(config.assets[assetKey], 'base64').toString('utf8');
+    } else {
+      try {
+        template = readFileSync(join(config.projectRoot, 'builtin-prompts', 'global.md'), 'utf8');
+      } catch {
+        template = '';
+      }
+    }
+    json(response, 200, { content: template });
+    return;
+  }
+
   if (pathname === '/api/prompts' && request.method === 'POST') {
     const body = (await readJson(request)) as unknown as PromptActionRequest;
     const action = body.action;
@@ -537,6 +558,36 @@ async function handleRequest(
     const etag = typeof body.etag === 'string' ? body.etag : undefined;
     const result = await writes.run(() => savePromptSource(promptInput(config), content, etag));
     json(response, 200, result);
+    return;
+  }
+
+
+  if (pathname === '/api/model/targets' && request.method === 'GET') {
+    json(
+      response,
+      200,
+      modelTargets({
+        files: config.settingsFiles,
+        piModelsPath: config.piModelsPath,
+        agents: config.agents,
+      }),
+    );
+    return;
+  }
+
+  if (pathname === '/api/model/apply' && request.method === 'POST') {
+    const body = (await readJson(request)) as unknown as ModelApplyRequest;
+    const payload = await writes.run(() =>
+      applyModelPackage({
+        files: config.settingsFiles,
+        agents: config.agents,
+        providerSource: config.providerSource,
+        piModelsPath: config.piModelsPath,
+        snapshotRoot: config.snapshotRoot,
+        request: body,
+      }),
+    );
+    json(response, 200, payload);
     return;
   }
 

@@ -17,6 +17,7 @@ import { build } from 'esbuild';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(ROOT, 'dist');
 const BUILTIN_SKILLS = join(ROOT, 'builtin-skills');
+const BUILTIN_PROMPTS = join(ROOT, 'builtin-prompts');
 const BUILD = join(ROOT, '.build');
 // Everything is produced here first. `release/` is only touched after a fully successful build,
 // so a broken build (or a running exe) never destroys the current release or its data/ folder.
@@ -77,6 +78,17 @@ function collectBuiltinSkills() {
   return assets;
 }
 
+/** Built-in prompt templates ship as assets so the exe can serve them offline. */
+function collectBuiltinPrompts() {
+  if (!existsSync(BUILTIN_PROMPTS)) return {};
+  const assets = {};
+  for (const relativePath of walk(BUILTIN_PROMPTS).sort()) {
+    const absolute = join(BUILTIN_PROMPTS, relativePath);
+    assets[`builtin-prompts/${relativePath}`] = readFileSync(absolute).toString('base64');
+  }
+  return assets;
+}
+
 function virtualAssets(assets) {
   return {
     name: 'virtual-assets',
@@ -123,7 +135,7 @@ async function main() {
   );
 
   console.log('[build-exe] 2/6 收集静态资源');
-  const assets = { ...collectAssets(), ...collectBuiltinSkills() };
+  const assets = { ...collectAssets(), ...collectBuiltinSkills(), ...collectBuiltinPrompts() };
   // Only the staging folder is cleared up front; release/ keeps its data/ and logs.
   rmSync(STAGE, { recursive: true, force: true });
   mkdirSync(STAGE, { recursive: true });

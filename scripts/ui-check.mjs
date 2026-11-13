@@ -446,6 +446,131 @@ try {
     JSON.stringify(providerShape),
   );
 
+  // 4c. Apply a model as a package: each agent gets its own provider/model format.
+  await page.waitForFn(`document.querySelector('.model-catalog-apply button')`);
+  await page.eval(`
+    const row = [...document.querySelectorAll('.model-catalog-row')].find((r) => r.innerText.includes('gw/alpha-large'));
+    row.querySelector('.model-catalog-apply button').click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.model-apply-dialog')?.open === true`);
+  const applyShape = await page.eval(`
+    const dialog = document.querySelector('dialog.model-apply-dialog');
+    return {
+      title: dialog.querySelector('h2')?.textContent ?? '',
+      agents: dialog.querySelectorAll('.model-apply-agent').length,
+      body: dialog.innerText,
+      action: [...dialog.querySelectorAll('button')].find((b) => b.textContent.includes('写入选中 agent'))?.textContent ?? '',
+    };
+  `);
+  check(
+    'model apply names all agents and files',
+    applyShape.title.includes('gw/alpha-large') &&
+      applyShape.agents === 3 &&
+      applyShape.body.includes('.claude') &&
+      applyShape.body.includes('.codex') &&
+      applyShape.body.includes('models.json'),
+    JSON.stringify(applyShape).slice(0, 240),
+  );
+  await page.eval(`
+    const dialog = document.querySelector('dialog.model-apply-dialog');
+    [...dialog.querySelectorAll('button')].find((b) => b.textContent.includes('写入选中 agent')).click();
+    return true;
+  `);
+  await page.waitForFn(`!document.querySelector('dialog.model-apply-dialog')`);
+  await page.waitForFn(`document.querySelector('.notice')?.textContent.includes('完整配置')`);
+  const applyNotice = await page.eval(`return document.querySelector('.notice')?.textContent ?? '';`);
+  check(
+    'model apply writes the selected agents',
+    applyNotice.includes('Claude Code') && applyNotice.includes('Codex') && applyNotice.includes('pi'),
+    applyNotice,
+  );
+
+  const claudeAfterApply = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'));
+  const codexAfterApply = readFileSync(join(home, '.codex', 'config.toml'), 'utf8');
+  const piSettingsAfterApply = JSON.parse(readFileSync(join(home, '.pi', 'agent', 'settings.json'), 'utf8'));
+  const piModelsAfterApply = JSON.parse(readFileSync(join(home, '.pi', 'agent', 'models.json'), 'utf8'));
+  check(
+    'claude package contains base URL, key and model',
+    claudeAfterApply.model === 'gw/alpha-large' &&
+      claudeAfterApply.env.ANTHROPIC_BASE_URL === `http://127.0.0.1:${MODELS_PORT}` &&
+      claudeAfterApply.env.ANTHROPIC_AUTH_TOKEN === 'test-provider-key' &&
+      claudeAfterApply.env.ANTHROPIC_MODEL === 'gw/alpha-large',
+    JSON.stringify({ model: claudeAfterApply.model, env: { base: claudeAfterApply.env.ANTHROPIC_BASE_URL, model: claudeAfterApply.env.ANTHROPIC_MODEL } }),
+  );
+  check(
+    'codex package contains its provider entry and model',
+    codexAfterApply.includes('[model_providers.agentmanager]') &&
+      codexAfterApply.includes('model = "gw/alpha-large"') &&
+      /experimental_bearer_token = ['"]test-provider-key['"]/.test(codexAfterApply),
+    codexAfterApply.slice(0, 240),
+  );
+  check(
+    'pi package contains the provider list and defaults',
+    Boolean(piModelsAfterApply.providers?.agentmanager) &&
+      piSettingsAfterApply.defaultProvider === 'agentmanager' &&
+      piSettingsAfterApply.defaultModel === 'gw/alpha-large',
+    JSON.stringify({ provider: piModelsAfterApply.providers?.agentmanager?.name, default: piSettingsAfterApply.defaultModel }),
+  );
+
+  // 4d. "Import all": pick a default model, preview, then write to all agents.
+  await page.eval(`
+    const buttons = [...document.querySelectorAll('.provider-model-actions button')];
+    const importAll = buttons.find((b) => b.textContent.trim() === '导入全部');
+    if (!importAll) throw new Error('导入全部 button not found');
+    importAll.click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('dialog.model-import-dialog')?.open === true`);
+  const importShape = await page.eval(`
+    const node = document.querySelector('dialog.model-import-dialog');
+    return {
+      title: node.querySelector('h2')?.textContent ?? '',
+      options: node.querySelectorAll('.model-import-option').length,
+      activeModel: node.querySelector('.model-import-option.is-active code')?.textContent ?? '',
+      agents: node.querySelectorAll('.model-import-agent, .model-apply-agent').length,
+      preview: node.querySelectorAll('.model-import-preview-agent').length,
+      previewText: node.querySelector('.model-import-code')?.textContent ?? '',
+      hasKey: node.innerText.includes('test-provider-key'),
+    };
+  `);
+  check(
+    'import dialog shows model picker, agent list and preview',
+    importShape.title.includes('导入全部') &&
+      importShape.options === 3 &&
+      importShape.agents === 3 &&
+      importShape.preview === 3 &&
+      importShape.previewText.includes('ANTHROPIC_BASE_URL'),
+    JSON.stringify(importShape).slice(0, 260),
+  );
+  check(
+    'import preview masks the API key',
+    !importShape.hasKey && importShape.previewText.includes('••••'),
+    JSON.stringify({ hasKey: importShape.hasKey }),
+  );
+  // Pick gw/alpha-large as the default (not gw/alpha-mini, which the later picker test needs to
+  // select to dirty the settings draft).
+  await page.eval(`
+    const options = [...document.querySelectorAll('.model-import-option')];
+    const target = options.find((o) => o.querySelector('code')?.textContent === 'gw/alpha-large');
+    target?.click();
+    return true;
+  `);
+  await sleep(200);
+  await page.eval(`
+    [...document.querySelectorAll('dialog.model-import-dialog button')].find((b) => b.textContent.includes('写入')).click();
+    return true;
+  `);
+  await page.waitForFn(`!document.querySelector('dialog.model-import-dialog')`);
+  await page.waitForFn(`document.querySelector('.notice')?.textContent.includes('完整配置')`);
+  const importNotice = await page.eval(`return document.querySelector('.notice')?.textContent ?? '';`);
+  check(
+    'import all writes every detected agent with the chosen model',
+    importNotice.includes('Claude Code') && importNotice.includes('Codex') && importNotice.includes('pi') && importNotice.includes('gw/alpha-large'),
+    importNotice,
+  );
+  await sleep(400);
+
   // A provider form is a draft too; changing a field must guard a tab switch.
   await page.eval(`
     const base = document.querySelector('.provider-field input[type=url]');
