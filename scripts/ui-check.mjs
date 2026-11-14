@@ -1638,6 +1638,49 @@ try {
   await page.waitForFn(`document.querySelector('.store-page .meta')?.textContent.includes('coffee')`);
   check('store search re-queries the registry', true);
 
+  const filterBar = await page.eval(`
+    const selects = [...document.querySelectorAll('.store-filters select')];
+    return {
+      labels: [...document.querySelectorAll('.store-filter > span:first-child')].map((span) => span.textContent),
+      sorts: [...(selects[2]?.options ?? [])].map((option) => option.textContent),
+      hint: document.querySelector('.store-filter-hint')?.textContent ?? '',
+    };
+  `);
+  check(
+    'the store offers category, risk and sort controls with a scope hint',
+    JSON.stringify(filterBar.labels) === JSON.stringify(['分类', '风险', '排序']) &&
+      filterBar.sorts.includes('质量最高') &&
+      filterBar.hint.includes('排序只作用于当前这页'),
+    JSON.stringify(filterBar),
+  );
+
+  await page.eval(`
+    const select = document.querySelector('.store-filters select');
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+    setter.call(select, 'security');
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+    return true;
+  `);
+  await page.waitForFn(`document.querySelector('.mcpm-empty')?.innerText.includes('没有符合筛选')`);
+  const filterEmpty = await page.eval(`
+    return {
+      cards: document.querySelectorAll('.store-card').length,
+      clear: [...document.querySelectorAll('.mcpm-empty button')].map((button) => button.textContent),
+    };
+  `);
+  check(
+    'a filter with no match explains itself and offers a way back',
+    filterEmpty.cards === 0 && filterEmpty.clear.some((label) => label.includes('清除筛选')),
+    JSON.stringify(filterEmpty),
+  );
+
+  await page.eval(`
+    [...document.querySelectorAll('.mcpm-empty button')].find((button) => button.textContent.includes('清除筛选'))?.click();
+    return true;
+  `);
+  await page.waitForFn(`document.querySelectorAll('.store-card').length > 0`);
+  check('clearing the filter brings the registry rows back', true);
+
   const pager = await page.eval(`
     const label = document.querySelector('.store-pager-label')?.textContent.trim() ?? '';
     const buttons = [...document.querySelectorAll('.store-pager button')];

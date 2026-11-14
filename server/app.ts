@@ -711,6 +711,9 @@ async function handleRequest(
       200,
       await getStoreReport({
         query: params.get('q') ?? '',
+        category: params.get('category') ?? '',
+        risk: params.get('risk') ?? '',
+        hasScripts: params.get('hasScripts') === '1',
         ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
         ...(Number.isFinite(page) && page > 0 ? { page } : {}),
         refresh: params.get('refresh') === '1',

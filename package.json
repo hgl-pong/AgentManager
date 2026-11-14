@@ -7,7 +7,7 @@
     "dev": "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --watch server/index.ts --no-window",
     "dev:web": "vite --config web/vite.config.ts",
-    "test": "node --test \"server/*.test.ts\"",
+    "test": "node --test \"server/*.test.ts\" \"web/src/lib/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config web/vite.config.ts",
     "build:catalog": "node scripts/build-settings-catalog.mjs",

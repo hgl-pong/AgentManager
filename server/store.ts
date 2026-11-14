@@ -30,6 +30,7 @@ import type {
   StoreMcpReport,
   StoreMcpServer,
   StoreMcpVariable,
+  StoreRisk,
   StoreSkill,
   StoreSkillDetail,
   StoreSkillReport,
@@ -275,12 +276,60 @@ function cacheSet<T>(entries: Map<string, StoreCacheEntry<T>>, entry: StoreCache
   }
 }
 
+/** What the skill catalog can be narrowed by. The registry applies these to the whole catalog. */
+export interface StoreSkillFilters {
+  category?: string;
+  risk?: StoreRisk;
+  hasScripts?: boolean;
+}
+
+const CATEGORY_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
+const RISK_VALUES: readonly string[] = ['safe', 'medium', 'high', 'critical'];
+
+/**
+ * Keeps only the values the registry understands, so a stale or hand-edited query reads as "no
+ * filter" instead of coming back as a registry error.
+ */
+export function readSkillFilters(input: {
+  category?: string;
+  risk?: string;
+  hasScripts?: boolean;
+}): StoreSkillFilters {
+  const category = (input.category ?? '').trim().toLowerCase();
+  const risk = (input.risk ?? '').trim().toLowerCase();
+  return {
+    ...(CATEGORY_PATTERN.test(category) ? { category } : {}),
+    ...(RISK_VALUES.includes(risk) ? { risk: risk as StoreRisk } : {}),
+    ...(input.hasScripts === true ? { hasScripts: true } : {}),
+  };
+}
+
+/**
+ * The registry filters server-side; this pass repeats it over the rows it answered with, so a
+ * registry that starts ignoring a parameter shows an empty page instead of unrelated skills.
+ */
+export function matchSkillFilters(items: StoreSkill[], filters: StoreSkillFilters): StoreSkill[] {
+  if (filters.category === undefined && filters.risk === undefined && filters.hasScripts === undefined) {
+    return items;
+  }
+  return items.filter(
+    (item) =>
+      (filters.category === undefined || item.category === filters.category) &&
+      (filters.risk === undefined || item.risk === filters.risk) &&
+      (filters.hasScripts === undefined || item.hasScripts === true),
+  );
+}
+
 export interface StoreInput {
   query?: string;
   /** 1-based page of the registry result set. */
   page?: number;
   limit?: number;
   refresh?: boolean;
+  /** Whole-catalog filters: the registry narrows the result set before it pages it. */
+  category?: string;
+  risk?: string;
+  hasScripts?: boolean;
   /** Skill directory names already in the source, so the page can mark them. */
   sourceSkills?: string[];
   sourcePath?: string;
@@ -341,6 +390,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreSkill
   const sourcePath = input.sourcePath ?? '';
   const fetchedAt = new Date(input.now?.() ?? Date.now()).toISOString();
   const sourceSkills = input.sourceSkills ?? [];
+  const filters = readSkillFilters(input);
 
   let base: string;
   try {
@@ -363,7 +413,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreSkill
     });
   }
 
-  const key = `${base}|${listing}|${query}|${limit}|${page}`;
+  const key = `${base}|${listing}|${query}|${limit}|${page}|${filters.category ?? ''}|${filters.risk ?? ''}|${filters.hasScripts === true ? '1' : ''}`;
   if (!input.refresh) {
     const hit = cacheGet(skillCache, key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -388,6 +438,9 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreSkill
     limit,
     page,
     ...(query === '' ? {} : { q: query }),
+    ...(filters.category === undefined ? {} : { category: filters.category }),
+    ...(filters.risk === undefined ? {} : { risk: filters.risk }),
+    ...(filters.hasScripts === undefined ? {} : { hasScripts: 'true' }),
   });
 
   try {
@@ -398,7 +451,7 @@ export async function getStoreReport(input: StoreInput = {}): Promise<StoreSkill
     const registryPage = asRecord(record.pagination);
     const totalPages =
       asNumber(registryPage.totalPages) || Math.max(1, Math.ceil(total / limit));
-    const items = rankStoreSkills(normalizeStoreSkills(payload), query);
+    const items = matchSkillFilters(rankStoreSkills(normalizeStoreSkills(payload), query), filters);
     cacheSet(skillCache, { key, at: Date.now(), items, total, totalPages });
     return storeReport({
       items,

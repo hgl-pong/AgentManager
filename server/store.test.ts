@@ -17,10 +17,12 @@ import {
   installStoreSkill,
   listInstalledSkills,
   mcpStoreBaseUrl,
+  matchSkillFilters,
   normalizeMcpServers,
   normalizeStoreSkills,
   rankStoreSkills,
   readManifest,
+  readSkillFilters,
   storeBaseUrl,
   stripCommonDirectory,
 } from './store.ts';
@@ -377,6 +379,56 @@ test('getStoreReport marks cache hits and falls back to the last answer when the
   const empty = await getStoreReport({ baseUrl, query: 'unheard-of', refresh: true });
   assert.equal(empty.items.length, 0);
   assert.match(empty.error ?? '', /HTTP 500/);
+});
+
+test('getStoreReport sends the catalog filters and narrows the rows it keeps', async () => {
+  const report = await getStoreReport({
+    baseUrl,
+    category: 'office',
+    risk: 'safe',
+    hasScripts: true,
+    sourceSkills: [],
+  });
+  assert.match(requests[0] ?? '', /category=office/);
+  assert.match(requests[0] ?? '', /risk=safe/);
+  assert.match(requests[0] ?? '', /hasScripts=true/);
+  assert.deepEqual(
+    report.items.map((item) => item.name),
+    ['pdf-tools'],
+    'the row without a category or risk is dropped even when the registry sends it',
+  );
+});
+
+test('getStoreReport drops a filter value the registry would not accept', async () => {
+  await getStoreReport({ baseUrl, category: 'Office!', risk: 'unsafe', sourceSkills: [] });
+  assert.equal(requests[0], '/api/skills?limit=12&page=1', 'nothing invalid reaches the registry');
+});
+
+test('the cache keeps one entry per filter set', async () => {
+  await getStoreReport({ baseUrl, category: 'office' });
+  await getStoreReport({ baseUrl, category: 'office' });
+  assert.equal(requests.length, 1, 'the same filter answers from the cache');
+
+  await getStoreReport({ baseUrl, category: 'security' });
+  assert.equal(requests.length, 2, 'a different filter is a different request');
+});
+
+test('readSkillFilters keeps known values and matchSkillFilters applies them', () => {
+  assert.deepEqual(readSkillFilters({ category: ' Office ', risk: 'HIGH', hasScripts: true }), {
+    category: 'office',
+    risk: 'high',
+    hasScripts: true,
+  });
+  assert.deepEqual(readSkillFilters({ category: '../etc', risk: 'bogus' }), {});
+
+  const items = normalizeStoreSkills(CATALOG);
+  assert.deepEqual(matchSkillFilters(items, {}).length, 2);
+  assert.deepEqual(
+    matchSkillFilters(items, { category: 'office' }).map((item) => item.name),
+    ['pdf-tools'],
+  );
+  assert.deepEqual(matchSkillFilters(items, { hasScripts: true }).length, 1);
+  assert.deepEqual(matchSkillFilters(items, { risk: 'critical' }).length, 0);
 });
 
 // ---- zip ----

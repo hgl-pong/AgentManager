@@ -6,7 +6,9 @@ import { StoreMcpInstallDialog } from '../components/StoreMcpInstallDialog.tsx';
 import { StoreDetailDialog } from '../components/StoreDetailDialog.tsx';
 import type { StoreDetailTarget } from '../components/StoreDetailDialog.tsx';
 import {
+  STORE_CATEGORY,
   STORE_LANGS,
+  STORE_RISK,
   STORE_TEXT,
   categoryLabel,
   loadStoreLang,
@@ -15,17 +17,32 @@ import {
   riskLabel,
 } from '../lib/store-i18n.ts';
 import type { StoreLang } from '../lib/store-i18n.ts';
+import { MCP_SORTS, SKILL_SORTS, sortStoreItems } from '../lib/store-sort.ts';
+import type { StoreSort } from '../lib/store-sort.ts';
 import type {
   BuiltinSkill,
   BuiltinSkillReport,
+  McpTransport,
   StoreKind,
   StoreMcpInstallResponse,
   StoreMcpServer,
   StoreReport,
+  StoreRisk,
   StoreSkill,
 } from '../../../shared/types.ts';
 
 const PAGE_SIZE = 24;
+
+/** Which wording each sort option uses; the order of the options lives in `store-sort.ts`. */
+const SORT_TEXT: Record<StoreSort, keyof typeof STORE_TEXT> = {
+  default: 'sortDefault',
+  quality: 'sortQuality',
+  updated: 'sortUpdated',
+  name: 'sortName',
+};
+
+const RISKS = Object.keys(STORE_RISK) as StoreRisk[];
+const TRANSPORTS: McpTransport[] = ['stdio', 'http', 'sse'];
 
 interface AgentOption {
   key: string;
@@ -175,6 +192,13 @@ export function StoreView({
 }) {
   const [lang, setLang] = useState<StoreLang>(() => loadStoreLang());
   const [kind, setKind] = useState<StoreKind>('skill');
+  // The skill registry applies these itself, so they narrow the whole catalog, not one page.
+  const [category, setCategory] = useState('');
+  const [risk, setRisk] = useState<StoreRisk | ''>('');
+  const [hasScripts, setHasScripts] = useState(false);
+  // MCP has no filter parameters; its transport and every sort stay on the rows already loaded.
+  const [transport, setTransport] = useState<McpTransport | ''>('');
+  const [sort, setSort] = useState<StoreSort>('default');
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [page, setPage] = useState(1);
@@ -226,6 +250,22 @@ export function StoreView({
     );
   }, [builtins, kind, page, submitted]);
 
+  // Neither registry sorts, so ordering happens on the rows this page already holds.
+  const skillItems = useMemo(
+    () => (report?.kind === 'skill' ? sortStoreItems(report.items, sort) : []),
+    [report, sort],
+  );
+  const mcpItems = useMemo(() => {
+    if (report?.kind !== 'mcp') return [];
+    const rows =
+      transport === ''
+        ? report.items
+        : report.items.filter((item) => item.options.some((option) => option.transport === transport));
+    return sortStoreItems(rows, sort);
+  }, [report, sort, transport]);
+  const filtersActive =
+    kind === 'skill' ? category !== '' || risk !== '' || hasScripts : transport !== '';
+
   const load = useCallback(
     async (
       nextKind: StoreKind,
@@ -239,7 +279,9 @@ export function StoreView({
       try {
         const next = await api.store(nextQuery, {
           kind: nextKind,
-          ...(nextKind === 'skill' ? { page: position.page } : { cursor: position.cursor }),
+          ...(nextKind === 'skill'
+            ? { page: position.page, category, risk, hasScripts }
+            : { cursor: position.cursor }),
           limit: PAGE_SIZE,
           refresh: options.refresh,
           signal,
@@ -254,7 +296,7 @@ export function StoreView({
         if (seq === seqRef.current) setLoading(false);
       }
     },
-    [],
+    [category, risk, hasScripts],
   );
 
   useEffect(() => {
@@ -303,6 +345,46 @@ export function StoreView({
     setCursorStack([]);
     setReport(null);
     setLoadError(null);
+    // Filters and sorts describe one catalog, so they do not carry over to the other.
+    setCategory('');
+    setRisk('');
+    setHasScripts(false);
+    setTransport('');
+    setSort('default');
+  }
+
+  function resetPosition() {
+    setPage(1);
+    setCursor('');
+    setCursorStack([]);
+  }
+
+  /** A registry filter changes the whole result set, so it starts again at the first page. */
+  function chooseCategory(next: string) {
+    setCategory(next);
+    resetPosition();
+  }
+
+  function chooseRisk(next: StoreRisk | '') {
+    setRisk(next);
+    resetPosition();
+  }
+
+  function toggleScripts(checked: boolean) {
+    setHasScripts(checked);
+    resetPosition();
+  }
+
+  function clearFilters() {
+    setSort('default');
+    if (kind === 'mcp') {
+      setTransport('');
+      return;
+    }
+    setCategory('');
+    setRisk('');
+    setHasScripts(false);
+    resetPosition();
   }
 
   function search(event: FormEvent) {
@@ -558,6 +640,89 @@ export function StoreView({
                 {t('featured')}
               </button>
             </form>
+
+            <div className="store-filters" role="group" aria-label={t('filterLabel')}>
+              {kind === 'skill' ? (
+                <>
+                  <label className="store-filter">
+                    <span>{t('filterCategory')}</span>
+                    <select
+                      className="control"
+                      value={category}
+                      onChange={(event) => chooseCategory(event.target.value)}
+                    >
+                      <option value="">{t('filterAll')}</option>
+                      {Object.keys(STORE_CATEGORY).map((slug) => (
+                        <option key={slug} value={slug}>
+                          {categoryLabel(lang, slug)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="store-filter">
+                    <span>{t('filterRisk')}</span>
+                    <select
+                      className="control"
+                      value={risk}
+                      onChange={(event) => chooseRisk(event.target.value as StoreRisk | '')}
+                    >
+                      <option value="">{t('filterAll')}</option>
+                      {RISKS.map((value) => (
+                        <option key={value} value={value}>
+                          {riskLabel(lang, value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="check store-filter-check">
+                    <input
+                      type="checkbox"
+                      checked={hasScripts}
+                      onChange={(event) => toggleScripts(event.target.checked)}
+                    />
+                    {t('filterScripts')}
+                  </label>
+                </>
+              ) : (
+                <label className="store-filter">
+                  <span>{t('filterTransport')}</span>
+                  <select
+                    className="control"
+                    value={transport}
+                    onChange={(event) => setTransport(event.target.value as McpTransport | '')}
+                  >
+                    <option value="">{t('filterAll')}</option>
+                    {TRANSPORTS.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="store-filter">
+                <span>{t('sortLabel')}</span>
+                <select
+                  className="control"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as StoreSort)}
+                >
+                  {(kind === 'skill' ? SKILL_SORTS : MCP_SORTS).map((value) => (
+                    <option key={value} value={value}>
+                      {t(SORT_TEXT[value])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {filtersActive && (
+                <button type="button" className="link-button" onClick={clearFilters}>
+                  {t('clearFilters')}
+                </button>
+              )}
+              <span className="hint store-filter-hint">
+                {kind === 'skill' ? t('filterHint') : t('mcpFilterHint')}
+              </span>
+            </div>
           </div>
 
           {tooShort && <p className="hint">{t('mcpMinChars')}</p>}
@@ -575,6 +740,9 @@ export function StoreView({
                     : formatCount(report.items.length)}{' '}
                   {t('results')} · {formatDate(report.fetchedAt)}
                   {report.cached ? ` · ${t('cached')}` : ''}
+                  {report.kind === 'mcp' && transport !== ''
+                    ? ` · ${t('pageFiltered', mcpItems.length, report.items.length)}`
+                    : ''}
                 </>
               ) : (
                 t('loading')
@@ -651,7 +819,19 @@ export function StoreView({
 
       {!report && !loadError && <p className="muted">{t('loading')}</p>}
 
-      {report && report.items.length === 0 && !report.error && (
+      {report &&
+        !report.error &&
+        filtersActive &&
+        (kind === 'skill' ? report.items.length === 0 : mcpItems.length === 0) && (
+          <div className="mcpm-empty">
+            <p>{kind === 'skill' ? t('noMatchSkill') : t('noMatch')}</p>
+            <button type="button" className="link-button" onClick={clearFilters}>
+              {t('clearFilters')}
+            </button>
+          </div>
+        )}
+
+      {report && report.items.length === 0 && !report.error && !filtersActive && (
         <div className="mcpm-empty">
           {report.kind === 'mcp' ? (
             <>
@@ -696,10 +876,10 @@ export function StoreView({
         </section>
       )}
 
-      {report && report.items.length > 0 && (
+      {report && (report.kind === 'skill' ? skillItems.length : mcpItems.length) > 0 && (
         <div className="store-grid">
           {report.kind === 'skill'
-            ? report.items.map((item) => (
+            ? skillItems.map((item) => (
                 <SkillCard
                   key={item.id}
                   item={item}
@@ -711,7 +891,7 @@ export function StoreView({
                   onInstall={() => requestInstall(item)}
                 />
               ))
-            : report.items.map((item) => {
+            : mcpItems.map((item) => {
                 const updated = formatDate(item.updatedAt);
                 const transports = [...new Set(item.options.map((option) => option.transport))];
                 const canInstall = item.options.length > 0;

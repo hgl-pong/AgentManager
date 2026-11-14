@@ -12,9 +12,10 @@ parent: architecture
 
 ## Boundary
 
-**读 skill 目录**：`GET /api/store?q=&page=&limit=`（`refresh=1` 跳过缓存）。
+**读 skill 目录**：`GET /api/store?q=&page=&limit=&category=&risk=&hasScripts=`（`refresh=1` 跳过缓存）。
 
 - 查询为空 → `GET <base>/api/skills?limit=N&page=P`（注册表自己的排序）；有查询 → 同一路径加 `&q=…`。注册表用 `pagination.totalPages` 告诉源页数，报告里带 `page / limit / total / totalPages`，页面据此渲染「上一页 / 下一页」。
+- 筛选 `category` / `risk` / `hasScripts` 由注册表在**整个目录范围内**先筛再分页（注册表确实实现了这三个参数，`total` 会随之变小），所以它们不是「当前页内筛选」：换筛选条件时页面回到第 1 页。值经 `readSkillFilters` 白名单校验（`category` 是小写 slug 形状、`risk` 只收 `safe/medium/high/critical`、`hasScripts` 只发 `true`），非法值等同未筛选，不会把注册表的 502 带给用户。返回的行再用 `matchSkillFilters` 复查一遍：注册表将来若忽略某个参数，页面显示空清单而不是无关的条目。筛选参与缓存 key。
 - 每行映射成：`id`/`slug`、`owner`（`author` 或 `githubUsername`）、`name`（`displayName`，装成目录就用它）、`summary`（`description`，回退 `aiDescription`）、`category`、`risk`（`safe/medium/high/critical`）、`license`、`repository`、`quality`（`qualityScore`）、`hasScripts`、`needsNetwork`、`downloads`/`favorites`、`version`、`updatedAt`。缺 `slug` 的行丢弃。
 - 注册表按描述做模糊匹配，会把名字无关的包排在前面，所以结果在服务端重排一次：名字全等 > 名字前缀 > 名字包含 > slug 包含 > 其余，同档保持注册表顺序。
 - 内存缓存 60 秒、最多 24 条；注册表失败时返回上次成功的清单并标 `stale` + `error`，没有缓存则返回空清单与错误。超时 20 秒，5xx 重试 3 次。
@@ -54,6 +55,13 @@ parent: architecture
 
 **双语显示**：`web/src/lib/store-i18n.ts` 保存商店页所有文案的中英两版，`StoreView` 用 `中文 / English / 双语`（默认双语，存 localStorage）渲染。只翻译界面词汇（按钮、状态、分类、风险级别、提示与确认框），**不翻译** skill/MCP server 自己的名字、描述与许可证——那是发布者的原文，机器翻译会与真实内容产生偏差。
 
+**筛选与排序**：商店页头部有「分类 / 风险 / 含脚本 / 传输 / 排序」一行控件，分类与风险列表取自 `store-i18n.ts` 的词表。
+
+- skill：分类、风险、含脚本是注册表筛选（整店生效，见上）；排序是**当前页内**的本地排序（`web/src/lib/store-sort.ts`）：默认（注册表顺序，即相关度或更新时间）/ 质量最高 / 最近更新 / 名称 A→Z。两个注册表都没有排序参数，所以排序不改变 URL、不重新请求。
+- MCP：官方注册表没有任何筛选或排序参数，因此传输筛选（`options[].transport`）和排序（默认 / 最近更新 / 名称）都只作用于当前页；页头用 `mcpFilterHint` 明说这一点。
+- 「含脚本」只有一个方向：注册表忽略 `hasScripts=false`，所以控件是「只要带脚本的」勾选框，而不是三态选择。
+- 筛选生效后没有结果时，空状态给出「清除筛选」按钮，而不是复用注册表空结果文案。
+
 **不做**：升级/版本固定/降级、发布 skill 或 MCP server、把安装结果记在源目录之外、执行 skill 里的任何东西、运行 MCP server、翻译发布者正文。
 
 ## 已知限制
@@ -62,6 +70,7 @@ parent: architecture
 - 没有更新检查：注册表上的新版本不会提示，重新安装需要先移除旧条目。
 - 注册表是外部服务：它挂掉时页面只能给出缓存与错误，不能离线安装。
 - 分类与风险级别的中文是内置词表（12 个分类），注册表新增分类会直接显示英文 slug。
+- 排序只作用于当前页（注册表没有排序参数），所以「质量最高」看到的是这一页里质量最高的，不是全店最高。
 - MCP Registry 没有总数，页面只能显示「第 N 页」，不能显示「共 M 页」；搜索也只匹配名称，不匹配描述。
 
 ## Why

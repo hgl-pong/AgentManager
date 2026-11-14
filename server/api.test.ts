@@ -805,6 +805,15 @@ test('the store lists and searches the registry through the API', async () => {
   assert.equal(search.listing, 'search');
   assert.equal(search.query, 'coffee');
   assert.ok(registryRequests.some((url) => url.startsWith('/api/skills?limit=12&page=1&q=coffee')));
+
+  const filtered = await call<StoreReport>('/api/store?category=office&risk=safe');
+  assert.equal(filtered.items.length, 1, 'the filters reach the registry and keep the matching row');
+  assert.ok(
+    registryRequests.some((url) => url.includes('category=office') && url.includes('risk=safe')),
+  );
+
+  const none = await call<StoreReport>('/api/store?category=security');
+  assert.deepEqual(none.items, [], 'a row the filter excludes is not shown as a match');
 });
 
 test('the store previews one skill with the full registry record', async () => {

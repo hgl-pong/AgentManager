@@ -126,6 +126,10 @@ export const api = {
       page?: number;
       cursor?: string;
       limit?: number;
+      /** Whole-catalog filters; the registry narrows the result before it pages it. */
+      category?: string;
+      risk?: string;
+      hasScripts?: boolean;
       refresh?: boolean;
       signal?: AbortSignal;
     } = {},
@@ -136,6 +140,9 @@ export const api = {
     if (options.page !== undefined) params.set('page', String(options.page));
     if (options.cursor) params.set('cursor', options.cursor);
     if (options.limit !== undefined) params.set('limit', String(options.limit));
+    if (options.category) params.set('category', options.category);
+    if (options.risk) params.set('risk', options.risk);
+    if (options.hasScripts) params.set('hasScripts', '1');
     if (options.refresh) params.set('refresh', '1');
     const qs = params.toString();
     return request<StoreReport>(`/api/store${qs ? `?${qs}` : ''}`, { signal: options.signal }, STORE_TIMEOUT_MS);

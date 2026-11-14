@@ -664,6 +664,9 @@ export interface CacheReport {
 /** Which catalog a store response describes. */
 export type StoreKind = 'skill' | 'mcp';
 
+/** Risk level the registry's audit assigns to a skill. */
+export type StoreRisk = 'safe' | 'medium' | 'high' | 'critical';
+
 /** A skill the registry offers. `id` is the registry slug and stays stable across pages. */
 export interface StoreSkill {
   id: string;
@@ -675,7 +678,7 @@ export interface StoreSkill {
   summary: string;
   category?: string;
   /** Stated risk of running the skill; the registry audits its scripts. */
-  risk?: 'safe' | 'medium' | 'high' | 'critical';
+  risk?: StoreRisk;
   license?: string;
   repository?: string;
   quality?: number;
